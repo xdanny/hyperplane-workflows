@@ -1,0 +1,851 @@
+{
+  "version": 1,
+  "checks": [
+    {
+      "id": "data-quality-profile",
+      "title": "Data quality: measure inputs",
+      "summary": "Measures the declared dataset before any rule is proposed: per-column types, nulls, distincts and tails; row counts, key uniqueness, duplicate and orphan rows, and per-period drift signals; and, separately, what the data says about every expectation the owner stated. Columns the safe-use boundary names sensitive are reported as counts and masked examples only. A source that cannot be reached is recorded as unverified, never invented.",
+      "description": "Profile the declared dataset for real, BEFORE proposing any rule. Read or query the data directly (sample only when the full scan is genuinely infeasible, and say so with the sample size and how it was drawn) and report what is actually there. Per column: name, physical type, null count and null percentage, distinct count, and for numerics/dates the min, max, and the p01/p50/p99 so an implausible tail is visible. Across the dataset: total row count; whether the declared key columns ARE unique at the declared grain, with the exact duplicate row count; exact-duplicate whole rows; REFERENTIAL ORPHANS \u2014 for each relationship implied by the brief or visible in the columns, the count of rows whose reference has no match, with the parent named; DRIFT SIGNALS \u2014 where the data is partitioned by time or arrives in batches, the per-period row count, null rate and mean of the key measures, so a step change or a silently emptied period is visible; and concrete data-quality issues (sentinel values like 1970-01-01, -1 or 9999, mixed encodings, timezone ambiguity, silently truncated strings, soft-deleted or test rows, numbers stored as text, trailing-whitespace keys). Then, SEPARATELY, take each expectation the owner stated in the brief and record what the data says about it: supported, contradicted, or not-checkable-yet, with the observed number \u2014 this is the bridge from belief to evidence, and it must not be skipped for an expectation that turns out to be uncomfortable. Respect the safe-use boundary: report counts and masked or offset-based examples for any column named sensitive there, never raw values. If a source cannot be reached, mark it verified:false and say what is missing \u2014 NEVER invent a profile, never round a number you did not observe. Write data-profile.json using checks.sh; the file must contain this JSON: {\"dataset\":{\"name\":str,\"format\":str,\"verified\":bool,\"rowCount\":number,\"scanned\":\"full\"|\"sample\",\"sampleNote\":str},\"columns\":[{\"name\":str,\"type\":str,\"nullCount\":number,\"nullPct\":number,\"distinctCount\":number,\"min\":str,\"max\":str,\"p01\":str,\"p99\":str}],\"candidateKeys\":[{\"columns\":[str],\"unique\":bool,\"duplicateRows\":number}],\"duplicateRows\":number,\"referentialOrphans\":[{\"child\":str,\"parent\":str,\"orphanRows\":number}],\"driftSignals\":[{\"dimension\":str,\"observation\":str,\"periods\":[{\"period\":str,\"rows\":number,\"note\":str}]}],\"expectationEvidence\":[{\"expectation\":str,\"status\":\"supported\"|\"contradicted\"|\"not-checkable\",\"observed\":str}],\"issues\":[str],\"openQuestions\":[str]}.\nCreate a reproducible checks.sh that reads the declared data and writes data-profile.json. Run exactly sh checks.sh as a separate SDK command. Confirm required inputs, parse the declared key-column list (none requires candidate columns), and check every named column against the real header before profiling. An unreadable named file or missing key column must fail. Include the source identity, query/code, full-versus-sample scope and observed counts. Use only the connections and tool setup explicitly permitted for this step. If a required engine or source is unavailable under those permissions, fail with the missing requirement.",
+      "produces": [
+        "checks.sh, a reproducible program that reads the declared data and writes the profile; the agent runs exactly `sh checks.sh` as a separate SDK command.",
+        "data-profile.json: dataset identity and scan scope, per-column counts, candidate keys, duplicate rows, referential orphans, drift signals, expectation evidence, issues and open questions."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution in the SDK sandbox and rejects a program or output inventory that changed around it.",
+        "Requires a verified source with a positive row count, and either a stated full scan or a sample with its size and method.",
+        "Checks every declared key column appears among the measured columns, and that column names are distinct.",
+        "Rejects null or distinct counts larger than the row count, and a candidate key whose unique flag disagrees with its duplicate-row count.",
+        "Requires at least one expectation-evidence row, each with an allowed status (supported, contradicted, not-checkable) and an observed value."
+      ],
+      "proves": [
+        "The named program ran to completion in the sandbox and produced a profile whose counts are internally consistent.",
+        "The declared key columns exist in the real source header and were measured at the declared grain.",
+        "Every expectation the owner stated is answered with an observed number rather than quietly dropped."
+      ],
+      "doesNotProve": [
+        "That the reported numbers describe the real dataset: the host reads the model's report, it does not re-query the source.",
+        "That the profile is complete; an issue, orphan or drift signal nobody looked for is simply absent.",
+        "That a sampled scan represents the population. The sample note is recorded, not validated."
+      ],
+      "inputs": {
+        "required": [
+          "dataset",
+          "keyColumns"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "id": "data-quality-rules",
+      "title": "Data quality: review plan",
+      "summary": "Turns the measured profile and the owner's stated expectations into an executable rule set: one rule for every expectation, rules for the problems the profile actually found, and the structural rules the declared grain implies. Each rule carries its assertion, scope, threshold with justification, severity and the named downstream consequence that earns it. An expectation that cannot be evaluated per row is listed as unexpressible with its reason. Nothing runs here; the rules are for a person to approve.",
+      "description": "Propose the quality rule set from the MEASURED profile and the owner's stated expectations. Rules to derive: (1) one rule for EVERY expectation in the brief \u2014 an expectation that cannot be expressed as an executable assertion is still listed, with expressible:false and why, so nothing the owner believes is silently dropped; (2) rules for the problems the profile actually found (duplicate keys, orphans, sentinel values, implausible tails, empty periods) even where the owner did not think to ask; (3) the structural rules the grain implies \u2014 key uniqueness and key non-nullity at the declared grain. Each rule carries: a stable id (kebab-case); the human statement; the dimension (completeness | uniqueness | validity | consistency | referential | timeliness); the executable assertion, written as the SQL predicate or expression that identifies a VIOLATING row (so the check counts violations rather than merely returning a boolean); the scope (which table/file and which subset of rows it applies to); the threshold \u2014 the violation count or rate above which the rule fails, WITH its justification, and set from the profile rather than from optimism: a rule whose threshold is set above the violation rate the profile already measured is a rule designed to pass, and is forbidden; the severity (blocker | major | minor) and \u2014 this is the part that earns the severity \u2014 WHY: which downstream decision, report or model breaks when this rule fails, in one concrete sentence. A severity with no named consequence is not a severity, it is a mood. Order the rules by severity, then by the violation rate the profile suggests. Note explicitly which rules are expected to FAIL on today's data based on the profile \u2014 an audit whose rules were all quietly tuned to pass tells the owner nothing. Respect the safe-use boundary in the assertions and in any example the rule would surface. Write quality-rules.json with this JSON: {\"rules\":[{\"id\":str,\"rule\":str,\"dimension\":str,\"assertion\":str,\"scope\":str,\"threshold\":{\"kind\":\"count\"|\"rate\",\"value\":number,\"justification\":str},\"severity\":\"blocker\"|\"major\"|\"minor\",\"why\":str,\"expressible\":bool,\"derivedFrom\":\"expectation\"|\"profile\"|\"grain\",\"expectedToFail\":bool,\"profileEvidence\":str,\"evidenceRequired\":str}],\"unexpressible\":[{\"expectation\":str,\"why\":str}],\"coverageNotes\":str}. THRESHOLD DISCIPLINE (the observed systematic failure): when an owner expectation carries no approved allowance and the profile has measured a violation rate, the threshold comes from the OWNER'S stated boundary \u2014 or zero to keep the defect visible \u2014 NEVER from the measured rate. Setting any threshold equal to (or within 10% of) a profile-measured rate is designing the rule to pass and will be rejected; if you believe the measured rate IS the right allowance, mark the rule expressible with threshold zero and record the proposed allowance in its justification for the human to approve explicitly. DENOMINATOR DISCIPLINE: a rule's scorecard `checked` count must equal the rows actually evaluated per-row at the declared grain \u2014 never 1 for an aggregate/metadata check and never the row count of a check that did not examine rows. If an expectation cannot be evaluated per-row at the declared grain (e.g. uniqueness with no usable key, timeliness with no arrival evidence), it is UNEXPRESSIBLE: record it in unexpressible[] with the reason \u2014 do not emit it as a rule with a synthetic denominator. KEY-UNIQUENESS RECONCILIATION (the two disciplines above collide without this): grain-key uniqueness and key non-nullity ARE per-row expressible whenever any declared OR constructible (provisional/composite) key exists \u2014 emit them as rules over that key, naming it provisional if it is one, with checked = rows examined. They belong in unexpressible[] ONLY when no per-row identity can be constructed at all, and then the entry must say what identity was sought and why none exists. EVIDENCE REQUIRED (what makes an evidence-gap distinguishable from a violation later): every rule states, in evidenceRequired, the evidence or metadata the data must CARRY for the rule to mean anything \u2014 the declared timezone of a timestamp column, the arrival/load timestamp a freshness rule compares against, the reference table a referential rule joins to, the unit a range rule assumes. Write it as the concrete thing that must be present, not as a hope. A rule whose evidenceRequired is absent from the data does not condemn the data; it condemns what is known about the data, and the executor will classify its failure as an evidence-gap rather than a violation on that basis. Where the profile already shows the evidence is missing, say so in profileEvidence so the human approving the rule knows they are approving a rule that will report a gap.\nUse one or more unique executable rules; one complete rule is sufficient. Assign severity from the stated consequence; an audit need not contain a blocker. Read the earlier profile step and its data-profile.json. Add expectations:[str] on every rule, using the EXACT expectation strings from profile.expectationEvidence that the rule covers; unmatched expectations must appear in unexpressible[]. Do not run the proposed rules before approval.",
+      "produces": [
+        "quality-rules.json rules[]: id, statement, dimension, the executable assertion selecting violating rows, scope, threshold with justification, severity, why and the expectations covered.",
+        "unexpressible[]: every expectation that cannot be an executable per-row assertion, each with the reason it cannot be one.",
+        "coverageNotes describing how the rule set covers the profile and the brief."
+      ],
+      "recomputes": [
+        "Reads the earlier data-profile.json and requires every profile expectation to be covered by a rule or listed as unexpressible with a reason.",
+        "Requires distinct kebab-case rule ids, an allowed severity, an explicit count or rate threshold with its justification, and expressible:true on every rule.",
+        "Requires each rule to state its dimension, assertion, scope, why, profileEvidence and evidenceRequired as nonempty text.",
+        "Runs nothing: this step is a proposal, so the host executes no rule program and reads no data."
+      ],
+      "proves": [
+        "Every expectation the profile recorded is either an executable rule or an explicitly justified omission.",
+        "Each proposed rule carries a threshold, a severity and a named consequence a person can approve or reject."
+      ],
+      "doesNotProve": [
+        "That a rule is correct, or that its assertion selects the rows its statement describes.",
+        "That a threshold is reasonable: the host checks that one exists and is justified in prose, not that the number is right.",
+        "That the rules would pass or fail; nothing has been run against the data at this step."
+      ],
+      "requires": [
+        "data-quality-profile"
+      ]
+    },
+    {
+      "id": "data-quality-audit",
+      "title": "Data quality: check results",
+      "summary": "Executes the approved rules against the declared data and emits a scorecard: per rule the units examined, violations, rate, the threshold comparison, and whether a failure is a data violation or an evidence gap. The dataset is read-only \u2014 this step audits, it never repairs. A seeded-violation fixture must trip an approved rule, so a rule that silently passes everything is exposed. Finding violations is the audit succeeding; they belong in the scorecard, not in the exit code.",
+      "description": "Execute the APPROVED rule set against the declared data and emit the scorecard under ./. WRITE BOUNDARY: this node audits, it does not repair. The declared dataset is READ-ONLY \u2014 no UPDATE, no DELETE, no schema change, no 'cleaned' copy written back to the source; every byte you write goes under ./. Emit: (1) ./rules/<rule_id>.sql (or .py where SQL cannot express it) \u2014 one file per approved rule, each SELECTing the violating rows so the count is derived from the same query that could show them; (2) ./fixtures/ \u2014 a small seeded input set AND a SEEDED-VIOLATION variant in which a known number of rows deliberately breaks one approved executable rule, regardless of its severity, so a rule that silently passes everything is exposed; (3) ./checks.sh \u2014 a POSIX sh script that RUNS every approved rule against the FULL declared data and writes quality-scorecard.json as {\"dataset\":{\"identity\":str,\"rows\":number,\"scanned\":\"full\"|\"sample\",\"sampleNote\":str},\"rules\":[{\"id\":str,\"rule\":str,\"dimension\":str,\"severity\":str,\"class\":\"violation\"|\"evidence-gap\",\"checked\":number,\"checkedUnit\":str,\"violations\":number,\"rate\":number,\"threshold\":str,\"pass\":bool,\"query\":str,\"missingEvidence\":str,\"examples\":[str]}],\"notRun\":[{\"id\":str,\"why\":str}],\"negativeCase\":{\"id\":\"seeded-violation\",\"rule\":str,\"seededRows\":number,\"detectedRows\":number,\"tripped\":bool},\"bySeverity\":{\"blocker\":{\"failed\":number,\"total\":number},\"major\":{\"failed\":number,\"total\":number},\"minor\":{\"failed\":number,\"total\":number}},\"byClass\":{\"violation\":{\"failed\":number,\"total\":number},\"evidence-gap\":{\"failed\":number,\"total\":number}},\"passed\":number,\"failed\":number}.  NON-NEGOTIABLE \u2014 EVERY RULE, FULL DATA: every approved rule is executed against the DECLARED data from the context block, and those observed counts are the scorecard's primary evidence; the fixtures exist ONLY as the seeded negative case. A rule that cannot run is recorded in notRun with the reason and counts as a failure of the audit, never as a silent omission and never as a pass. Scanning a sample instead of the full data is permitted ONLY when a full scan is genuinely infeasible, and then dataset.scanned must say 'sample' with the sample size and method \u2014 a rate reported from a sample and presented as the full population is a dishonest scorecard. UNITS ON EVERY DENOMINATOR: `checked` is a bare number and different rules count different things \u2014 a row-level predicate counts ROWS, a schema or per-file rule counts FILES, a referential rule may count KEYS. Every rule row therefore carries `checkedUnit` naming what `checked` counts in the plural noun a reader would use (\"rows\", \"files\", \"keys\", \"columns\", \"partitions\"); a rule row without checkedUnit is an incomplete report. The unit travels with the number everywhere it is written: the one-line summary, the rule row, and every example string. PLURALISE AGAINST THE COUNT, not against the field name \u2014 \"1 violating row\", \"6 of 6 files\", never \"1 violating rows\". EXAMPLES STATE FILE-GRAIN FACTS AS FACTS: where the unit is not rows, the examples name the thing and what was observed about it (\"2025-03.csv has 20 columns, the brief declares 21\"), never a fabricated row count and never a row offset the rule never looked at. REPORT FORMAT: per rule, {rule, checked (how many of checkedUnit the rule actually examined), checkedUnit, violations, rate (violations/checked), severity, class, pass} \u2014 a pass with checked:0, or violations with no rate, is an incomplete report; the pass verdict is the threshold comparison, computed, never asserted. EVIDENCE-GAP CLASSIFICATION (the observed systematic misreport): every rule is classified as either a VIOLATION or an EVIDENCE-GAP, and the two mean different things. class:\"violation\" means the data was examined and the rows genuinely break the rule \u2014 that is a defect in the data. class:\"evidence-gap\" means the rule could not be evidenced because the metadata or context it needs is ABSENT: the timestamp column carries no declared timezone so 'no future timestamps' cannot be evaluated without assuming one; there is no arrival or load timestamp so freshness has nothing to measure against; no column declares the unit or currency a range rule assumes, so the range can only be judged against a guess. (A rule that could not run at all \u2014 the reference table is missing, the query errored \u2014 is NOT an evidence-gap: it belongs in notRun, which is a failure of the audit.) The distinction is about MISSING EVIDENCE, not about difficulty or inconvenience: a rule you simply did not like the result of is a violation. An evidence-gap rule still reports its real checked count and its real failing-row count and still fails when it fails \u2014 nothing is hidden \u2014 but it also carries missingEvidence naming exactly what is absent and what supplying it would settle, and it is rolled up separately in byClass so 3,000,000 rows lacking a timezone declaration never reads as 3,000,000 rows of bad data. bySeverity is UNCHANGED by this: severity is about consequence and is rolled up over every rule regardless of class. Where a rule was approved with evidenceRequired and that evidence is present, it is a violation-class rule and stays one. NOTES DEFINE WHAT THEY COIN: any `notes` or `missingEvidence` field is read by someone who was not in the run. Define a term where you coin it, in the same sentence (\"the five rules that report missing evidence rather than data violations ('evidence gaps')\"), and never introduce three undefined terms in one clause. Where a note describes a threshold, SAY WHICH SIDE OF IT THE BOUNDARY CASE LANDS ON \u2014 \"a difference of exactly one cent PASSES, because the tolerance is inclusive\" \u2014 because \"remains within the approved tolerance\" does not tell a reader whether the boundary case passed or failed. SAFE USE: examples must respect the safe-use boundary \u2014 masked, hashed or offset-based for any sensitive column named there \u2014 and no example may reproduce enough rows to reconstitute the dataset. TOOLCHAIN: use the engine and interpreter already available in this SDK sandbox. Only use network access or install dependencies when explicitly permitted in this step; follow the supplied connection and tool-runtime settings. If a required dependency or source is unavailable, fail with its exact requirement. Never hard-code a passing result, never embed credentials (read connection settings from the environment), and never soften a threshold the human approved \u2014 if a threshold now looks wrong, the scorecard says so in notes and still reports the verdict as approved. EXIT-CODE CONTRACT for checks.sh (the observed systematic failure): finding violations IS the audit succeeding \u2014 checks.sh MUST exit 0 whenever every approved rule executed to completion against the full declared data, REGARDLESS of how many violations were found (violations belong in the scorecard, not the exit code). Exit nonzero ONLY when: a rule could not execute, an output artifact could not be written, or the seeded-violation negative fixture fails to trip. checks.sh must also PRINT a one-line summary (rules executed, rules with violations, rules reporting an evidence-gap, total violations) so its log is never empty. RUNTIME BUDGET: when the brief declares one, checks.sh ENFORCES it and fails loudly on overrun \u2014 guard the long stages (`timeout <seconds>` where the host has it, otherwise a recorded start time and an explicit elapsed-vs-budget comparison), exit non-zero naming the rule or stage that exceeded and by how much, and record measured elapsed seconds per stage in the scorecard under \"timing\": {\"budget\":str,\"stages\":[{\"stage\":str,\"seconds\":number}],\"withinBudget\":bool}. A budget is never met by quietly switching to a sample, dropping an approved rule, or skipping the seeded negative case \u2014 if the honest audit cannot fit, the run fails and says which rule was too slow. When the brief says the budget is unspecified, impose none and invent none. ENVIRONMENT: honour what the brief declares about where this runs \u2014 if it states there is no network egress, do not plan an install path that needs one (stay in the stdlib or the engine already present, and say so), if it names an engine or interpreter use that one, and read every connection setting from the environment it names rather than hard-coding it.\nRead the previously approved quality-rules.json as immutable input. Write checks.sh and all code/output files directly in this step folder. Run exactly sh checks.sh as a separate SDK command. Complete all file edits before that command; after it finishes, only read the results and hand off. A successful exit must mean all approved rules executed and the negative case tripped; data violations belong in the scorecard and do not make program execution fail. Preserve the approved thresholds even if the data fails them. The negativeCase must identify an approved executable rule of any severity, report tripped:true, a positive seededRows count and detectedRows at least as large as seededRows. The host checks reported counts and rule identity, observes successful program execution and pins the files. These model-authored negative-case outcomes are harness-reported evidence, not independent causal proof that the same rule detected the seeded input; review the actual check code and fixture.",
+      "produces": [
+        "rules/<rule_id>.sql (or .py) : one file per approved rule, each selecting the violating rows the reported count is derived from.",
+        "fixtures/ : a small seeded input set and a seeded-violation variant in which a known number of rows breaks one approved executable rule.",
+        "checks.sh : runs every approved rule against the full declared data, prints a one-line summary, and exits 0 whenever every rule executed however many violations it found.",
+        "quality-scorecard.json : dataset identity and scan scope, per-rule results with checkedUnit, class and verdict, notRun, the negative case, and the severity and class rollups."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Recomputes each violation rate from that rule's own checked and violation counts and rejects a reported rate that disagrees.",
+        "Recomputes each pass verdict from the approved threshold, so the verdict is compared rather than asserted.",
+        "Recomputes the bySeverity and byClass rollups and the passed/failed totals from the individual rule rows.",
+        "Requires every approved rule to appear exactly once with its approved severity, and notRun to be empty.",
+        "Requires the negative case to name an approved rule, report tripped:true, and detect at least as many rows as were seeded."
+      ],
+      "proves": [
+        "Every approved rule executed, and each reported verdict follows the approved threshold and the counts printed beside it.",
+        "The scorecard's arithmetic is internally consistent: rates, rollups and totals are the host's, not the model's."
+      ],
+      "doesNotProve": [
+        "That a query measured what its rule describes: the host reads reported counts and never executes the generated SQL itself.",
+        "That the seeded case was detected BY the rule it names. These are model-authored, harness-reported outcomes, not causal proof; inspect the check code and the fixture.",
+        "That the data is fit for purpose: a rule nobody proposed is never evaluated, and an evidence gap is a statement about missing metadata, not about clean data."
+      ],
+      "requires": [
+        "data-quality-profile",
+        "data-quality-rules"
+      ],
+      "approvalAfter": "data-quality-rules"
+    },
+    {
+      "id": "dataset-shift-profile",
+      "title": "Dataset shift: measure inputs",
+      "summary": "Measures the baseline and current windows under the same scan mode and one shared bin vocabulary, so a later comparison is between two measured distributions rather than one measured and one remembered. Per declared feature: null and distinct counts, per-bin counts and shares, and how it was binned. Per window: identity, rows, observed period and volume by period. A window that cannot be reached is marked unverified rather than inferred from the other.",
+      "description": "Profile BOTH declared windows for real, BEFORE proposing any shift rule, and profile them THE SAME WAY \u2014 a comparison is only meaningful when both sides were measured with identical binning, identical filters and identical null handling. Read or query each window directly (sample only when a full scan is genuinely infeasible, and then say so with the sample size and how it was drawn, for BOTH windows). Report, per window: the period actually covered (observed min and max of the time column, not the period the brief claimed), the row count, and per declared feature \u2014 physical type, null count and null percentage, distinct count, and the distribution itself. For a NUMERIC feature the distribution is a histogram over bins CUT FROM THE BASELINE (equal-frequency deciles unless the brief says otherwise) plus min/p01/p25/p50/p75/p99/max and the mean; the current window is bucketed into the BASELINE's bin edges, because re-cutting bins per window hides exactly the movement you are looking for. For a CATEGORICAL feature it is the full value vocabulary with per-value counts and shares, so a value present in one window and absent from the other is visible by construction. Also report, across windows: the volume per natural period (day or month) in each window so a step change or a silently empty period is visible, and any SCHEMA difference \u2014 a column present in one window and not the other, or with a different physical type \u2014 because a schema change is not drift, it is a different dataset, and it must be named as such rather than measured as a large PSI. Note concrete comparability hazards: differing units, a rescaled or re-encoded column, sentinel values (1970-01-01, -1, 9999) appearing in one window only, timezone handling that differs between drops, or a filter that applies to one window and not the other. Respect the safe-use boundary: bucket ranges and counts only for any column named sensitive there, never raw values. If either window cannot be reached, mark it verified:false and say what is missing \u2014 NEVER invent a distribution, never round a number you did not observe, and never profile only one window and infer the other. DEPENDENCIES: Follow only the explicit per-step access and temporary tool-runtime permissions. Record pinned versions; do not place environments in delivered files. Write window-profiles.json and return the same JSON: {\"baseline\":{\"identity\":str,\"verified\":bool,\"rows\":number,\"periodObserved\":str,\"scanned\":\"full\"|\"sample\",\"sampleNote\":str},\"current\":{\"identity\":str,\"verified\":bool,\"rows\":number,\"periodObserved\":str,\"scanned\":\"full\"|\"sample\",\"sampleNote\":str},\"features\":[{\"name\":str,\"type\":str,\"whyItMatters\":str,\"baseline\":{\"nullPct\":number,\"distinctCount\":number,\"bins\":[{\"bin\":str,\"count\":number,\"share\":number}],\"quantiles\":{}},\"current\":{\"nullPct\":number,\"distinctCount\":number,\"bins\":[{\"bin\":str,\"count\":number,\"share\":number}],\"quantiles\":{}},\"binningNote\":str}],\"volumeByPeriod\":[{\"window\":\"baseline\"|\"current\",\"period\":str,\"rows\":number}],\"schemaDifferences\":[{\"column\":str,\"difference\":str}],\"comparabilityHazards\":[str],\"toolchain\":{},\"openQuestions\":[str]}.\nCreate checks.sh that reads both declared windows and writes window-profiles.json. Run exactly sh checks.sh as a separate SDK command, then only read results and hand off. Feature type is the declared logical type (numeric/categorical/timestamp); record physical types separately. Include nullCount for each side; bin counts plus nullCount must equal rows examined. Shares use non-null rows. Use the union categorical vocabulary with identical ordered labels and zero counts for absent values. A schema-incompatible feature may set comparable:false with reason and a matching schemaDifferences entry, instead of invented distributions. The host will attach fixed ../profile/control-spec.json and ../profile/control-counts.json after verifying the profile. Do not create either control file yourself.",
+      "produces": [
+        "checks.sh : profiles both windows and writes the profile; run exactly once as a separate SDK command.",
+        "window-profiles.json : both window identities, rows, scan scope and periods; per-feature bins, counts, shares, nulls and distincts; schema differences, comparability hazards and volume by period."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Recomputes every bin share from its own count, and requires bin counts plus nulls to account for the whole window.",
+        "Requires both windows to use the same scan mode and identical bin labels in the same order, so a re-binned feature cannot read as drift.",
+        "Requires every declared feature to be profiled exactly once; an uncomparable feature must give a reason and name a matching schema difference.",
+        "Writes control-spec.json and control-counts.json itself once the step passes: the seeded control is caller-owned and not designed by the agent."
+      ],
+      "proves": [
+        "Both windows were measured under the same scan mode into one comparable bin vocabulary.",
+        "The per-bin arithmetic in the profile agrees with the counts reported beside it.",
+        "A fixed negative control exists for the later audit that the agent did not design."
+      ],
+      "doesNotProve": [
+        "That the reported distributions match the real data: the host checks the report's internal consistency, not the source.",
+        "That the bins are meaningful for the feature, or that a sampled window represents its period.",
+        "That a feature marked uncomparable truly cannot be compared; the reason is recorded, not verified."
+      ],
+      "inputs": {
+        "required": [
+          "baselineData",
+          "currentData",
+          "features",
+          "keyColumns"
+        ],
+        "optional": [
+          "seededControl"
+        ]
+      },
+      "inputTables": {
+        "features": {
+          "label": "Features",
+          "uniqueBy": "feature",
+          "minRows": 1,
+          "maxRows": 32,
+          "columns": [
+            {
+              "id": "feature",
+              "label": "Feature",
+              "required": true
+            },
+            {
+              "id": "type",
+              "label": "Type",
+              "required": true,
+              "options": [
+                "numeric",
+                "categorical",
+                "timestamp"
+              ]
+            },
+            {
+              "id": "whyItMatters",
+              "label": "Why it matters",
+              "required": true
+            },
+            {
+              "id": "severity",
+              "label": "Severity",
+              "options": [
+                "blocker",
+                "major",
+                "minor"
+              ]
+            },
+            {
+              "id": "statistic",
+              "label": "Statistic",
+              "options": [
+                "psi",
+                "kl",
+                "rate-delta",
+                "category-emergence",
+                "volume-drift"
+              ]
+            },
+            {
+              "id": "tolerance",
+              "label": "Tolerance",
+              "required": true,
+              "format": "nonnegative-number"
+            },
+            {
+              "id": "unit",
+              "label": "Unit",
+              "required": true,
+              "options": [
+                "psi",
+                "kl",
+                "points_of_share",
+                "percent_of_baseline",
+                "absolute",
+                "count"
+              ]
+            },
+            {
+              "id": "watchBand",
+              "label": "Watch band",
+              "format": "nonnegative-number"
+            },
+            {
+              "id": "owner",
+              "label": "Set by"
+            }
+          ]
+        },
+        "seededControl": {
+          "label": "Controls",
+          "uniqueBy": "feature",
+          "minRows": 0,
+          "maxRows": 32,
+          "columns": [
+            {
+              "id": "feature",
+              "label": "Control feature",
+              "required": true
+            },
+            {
+              "id": "multiple",
+              "label": "Multiple",
+              "required": true,
+              "format": "nonnegative-number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "dataset-shift-rules",
+      "title": "Dataset shift: review plan",
+      "summary": "Proposes one executable drift rule per declared feature from the measured windows, each with its statistic, binning, tolerance and the consequence that earns its severity. A tolerance the owner declared is preserved exactly \u2014 statistic, value and unit \u2014 and a tolerance the agent suggests is marked as proposed for separate approval. A feature that cannot be compared across both windows belongs in unexpressible with its reason, never in a statistic computed against a synthetic denominator.",
+      "description": "Propose the shift rule set from the MEASURED profiles of both windows and the PER-FEATURE table the owner declared in the brief. ONE FEATURE, ONE TOLERANCE: the primary rule preserves THAT feature's own statistic, tolerance and unit. Additional rules need explicitly proposed tolerances with a downstream justification; never borrow a limit from another feature. A feature whose row carries no tolerance does not reach you (the inputs gate refuses the run), so a missing tolerance here means you have invented a rule for a feature nobody declared. Require the selected statistic for every declared feature, preserving its exact owner tolerance and unit. A feature that cannot be expressed as an executable statistic belongs in unexpressible[] with its reason, so none is silently dropped. One selected-statistic rule per comparable feature is sufficient, including PSI for a categorical feature. Category-emergence, volume-drift and executable checks for observed comparability hazards are optional additional proposals. If useful, include them with toleranceOrigin \"proposed\" and a justified threshold for review under the existing human approval; do not require extra statistics or present their thresholds as owner-declared. Continue reporting period volumes and comparability hazards in the profile whether or not an extra rule is proposed. Each rule carries: a stable id (kebab-case); the feature; the human statement; the statistic (psi | kl | rate-delta | category-emergence | volume-drift); the exact binning or vocabulary it uses, referencing the baseline bin edges from the profile; the tolerance \u2014 the value at or above which the feature counts as shifted, in that statistic's unit, WITH where it came from (the primary rule preserves the exact unit declared on the feature's row); toleranceOrigin, which is \"declared\" when the statistic, number and unit are exactly the ones on that feature's row and \"proposed\" when you are suggesting one the owner did not state (a rule for a comparability hazard the profile found, say) \u2014 a proposed tolerance is approved separately by the human and must never be presented as theirs; the band structure where the brief declares one (watch vs shift); the severity (blocker | major | minor) and \u2014 this is the part that earns the severity \u2014 WHY: which downstream model, report or decision breaks when this feature moves, in one concrete sentence, taken from the reason the brief gave for that feature. A severity with no named consequence is not a severity, it is a mood. Note explicitly which rules the profiles suggest will trip. Stable data is a valid outcome; do not tune thresholds to manufacture either verdict. Respect the safe-use boundary in the statistics and in any example a rule would surface. Write shift-rules.json and return the same JSON: {\"rules\":[{\"id\":str,\"feature\":str,\"rule\":str,\"statistic\":str,\"binning\":str,\"tolerance\":{\"value\":number,\"unit\":str,\"band\":str,\"source\":str},\"toleranceOrigin\":\"declared\"|\"proposed\",\"severity\":\"blocker\"|\"major\"|\"minor\",\"why\":str,\"expressible\":bool,\"derivedFrom\":\"tolerance\"|\"profile\"|\"feature\",\"expectedToTrip\":bool,\"profileEvidence\":str}],\"unexpressible\":[{\"feature\":str,\"why\":str}],\"coverageNotes\":str}. THRESHOLD DISCIPLINE (the observed systematic failure): a tolerance is either the owner's number for THAT feature (toleranceOrigin \"declared\") or your proposal for a rule they did not declare (toleranceOrigin \"proposed\"). There is no third source: not another feature's approved limit, not a default, and above all NEVER the statistic the profile just measured. \"Pending explicit feature-specific approval\" is not a tolerance - it is a rule with toleranceOrigin \"proposed\", which the human either approves or sends back. An owner-declared tolerance remains unchanged regardless of the measured statistic; a proposed threshold must be justified by its downstream consequence, never selected merely to pass; if you believe the measured value IS the right allowance, keep the rule at the owner's declared tolerance and record the proposed allowance in tolerance.source for the human to approve explicitly. DENOMINATOR DISCIPLINE: a rule's scorecard `checked` counts must equal the rows actually entering the statistic in EACH window at the declared feature's grain \u2014 never 1 for an aggregate statistic, never the row count of a window the check did not read, and never the same number for both windows unless both windows genuinely have it. Rows dropped from a statistic (nulls, an unbinnable value) are reported as excluded with their count, not silently absorbed into a denominator. If a feature cannot be evaluated over both windows at all (it exists in only one window, or its values are not comparable across them), it is UNEXPRESSIBLE: record it in unexpressible[] with the reason \u2014 do not emit it as a rule with a synthetic denominator or a statistic computed against a window that has no such column. SCHEMA VS SHIFT: a column that changed type, unit or encoding between the windows belongs in unexpressible[] (or in a comparability rule that names the change), never in a PSI that reports the re-encoding as drift.\nRead ../profile/window-profiles.json and the caller-owned control files. A primary rule for each comparable feature must preserve that feature's declared statistic, tolerance and unit. For controls with rate-delta use the final shared bin as the positive event, as named in control-spec; disclose this event in the rule's binning. Controls use synthetic weighted bins (fractional weights are intentional), not observed rows. Volume controls have equal exposure; period-normalized rules must preserve this on the control path. Mark extra emergence, volume or hazard tolerances as proposed unless exactly declared. Write shift-rules.json; do not execute these rules yet.",
+      "produces": [
+        "shift-rules.json rules[]: id, feature, statistic, binning, tolerance with its value, unit, source and origin, severity, why, profileEvidence and expectedToTrip.",
+        "unexpressible[]: every declared feature that cannot be scored across both windows, with the reason it cannot."
+      ],
+      "recomputes": [
+        "Requires each declared feature to have either a primary rule using that feature's declared statistic or an unexpressible entry.",
+        "Requires a rule whose tolerance origin is 'declared' to carry the exact statistic, value and unit from that feature's own row.",
+        "Requires a schema-incompatible feature to be unexpressible rather than scored as drift.",
+        "Requires distinct rule ids, an allowed statistic and severity, expressible:true, and a non-negative tolerance with its unit and source.",
+        "Runs nothing: the proposed rules wait for human approval."
+      ],
+      "proves": [
+        "Every declared feature is either covered by an executable rule or explicitly excluded with a reason.",
+        "Owner-declared tolerances reached the rule set unchanged, and any tolerance the agent invented is labelled as a proposal."
+      ],
+      "doesNotProve": [
+        "That the chosen statistic measures drift meaningfully for that feature, or that its binning is sensible.",
+        "That a proposed tolerance is defensible; it is flagged for a person to approve.",
+        "That the rules would detect the drift that matters; nothing has been executed at this step."
+      ],
+      "requires": [
+        "dataset-shift-profile"
+      ]
+    },
+    {
+      "id": "dataset-shift-audit",
+      "title": "Dataset shift: check results",
+      "summary": "Executes the approved drift rules over both measured windows and reports, per rule, the observed statistic, the rows checked and excluded in each window, the contributing bins and the tolerance comparison. This step measures; it does not repair. The caller-owned control \u2014 fixed counts the host wrote at the profile step \u2014 runs through the same rule files unchanged, so an audit whose checks cannot detect a movement over the line is exposed.",
+      "description": "Execute the APPROVED shift rule set against BOTH declared windows and emit the scorecard under ./. WRITE BOUNDARY: this node measures, it does not repair. Both declared windows are READ-ONLY \u2014 no UPDATE, no DELETE, no schema change, no 'aligned' copy written back to either source; every byte you write goes under ./. Emit: (1) ./rules/<rule_id>.sql (or .py where SQL cannot express the statistic) \u2014 one file per approved rule, each computing the statistic from the per-bin counts of both windows so the number is derived from counts that could themselves be shown; (2) THE CONTROL IS NOT YOURS TO DESIGN. ../profile/control-counts.json and control-spec.json were written BEFORE this node ran, by `sdk-control`, from the multiple of each feature's own tolerance that the OWNER declared. Run the SAME rule files over those counts, exactly as written, and report what happened: never re-size the distortion, never re-generate the file, never substitute a control of your own. The control answers one question - can these checks detect a movement the owner considers over the line? - so a control that does NOT trip when control-spec says expectTrip:true is a failure of the whole audit, whatever the real windows show, and a control with expectTrip:false that DOES trip is the same failure from the other side; (3) ./checks.sh \u2014 a POSIX sh script that RUNS every approved rule against the FULL declared data of both windows and writes ./shift-scorecard.json as {\"windows\":{\"baseline\":{\"identity\":str,\"rows\":number,\"periodObserved\":str,\"scanned\":\"full\"|\"sample\",\"sampleNote\":str},\"current\":{\"identity\":str,\"rows\":number,\"periodObserved\":str,\"scanned\":\"full\"|\"sample\",\"sampleNote\":str}},\"rules\":[{\"id\":str,\"feature\":str,\"rule\":str,\"statistic\":str,\"severity\":str,\"checkedUnit\":str,\"checkedBaseline\":number,\"checkedCurrent\":number,\"excludedBaseline\":number,\"excludedCurrent\":number,\"value\":number,\"tolerance\":number,\"band\":str,\"shifted\":bool,\"topContributors\":[{\"bin\":str,\"baselineShare\":number,\"currentShare\":number,\"contribution\":number}],\"query\":str}],\"notRun\":[{\"id\":str,\"why\":str}],\"negativeControls\":[{\"feature\":str,\"statistic\":str,\"multiple\":number,\"tolerance\":number,\"unit\":str,\"target\":number,\"value\":number,\"expectTrip\":bool,\"tripped\":bool,\"source\":\"sdk-control\",\"method\":str}],\"bySeverity\":{\"blocker\":{\"shifted\":number,\"total\":number},\"major\":{\"shifted\":number,\"total\":number},\"minor\":{\"shifted\":number,\"total\":number}},\"shifted\":number,\"stable\":number,\"toolchain\":{}}. NON-NEGOTIABLE \u2014 EVERY RULE, FULL DATA, BOTH WINDOWS: every approved rule is computed against the DECLARED windows from the context block, and those observed counts are the scorecard's primary evidence; the seeded control exists ONLY as the negative case and its numbers never stand in for a real one. A rule that cannot run is recorded in notRun with the reason and counts as a failure of the audit, never as a silent omission and never as 'stable'. Scanning a sample instead of the full windows is permitted ONLY when a full scan is genuinely infeasible, and then BOTH windows must be sampled the same way and windows.scanned must say 'sample' with the size and method \u2014 a statistic computed from two differently-drawn samples measures the sampling, not the world. REPORT FORMAT: per rule, {feature, statistic, checkedBaseline, checkedCurrent, value, tolerance, shifted} plus the top contributing bins with each side's share, because 'PSI 0.31' tells an owner nothing about WHICH part of the distribution moved and the contributors are what makes the finding actionable; the shifted verdict is the tolerance comparison, computed, never asserted. UNITS ON EVERY DENOMINATOR: checkedBaseline and checkedCurrent are bare numbers and not every rule counts rows \u2014 a distribution rule counts ROWS, a schema or per-file rule counts FILES or COLUMNS. Every rule row therefore carries `checkedUnit` naming what those counts count, in the plural noun a reader would use (\"rows\", \"files\", \"columns\", \"partitions\"); a rule row without checkedUnit is an incomplete report, and the unit travels with the number into the one-line summary and every example string. PLURALISE AGAINST THE COUNT \u2014 \"1 shifted bin\", \"6 of 6 files\", never \"1 shifted bins\". EXAMPLES STATE FILE-GRAIN FACTS AS FACTS: where the unit is not rows, an example names the thing and what was observed about it (\"2025-03.csv has 20 columns, the brief declares 21\"), never a fabricated row count. NOTES DEFINE WHAT THEY COIN: define any term you invent in the sentence that coins it, and where a note describes a threshold, say which side of it the boundary case lands on. DENOMINATOR DISCIPLINE: checkedBaseline and checkedCurrent are the rows or files that actually entered the statistic in each window \u2014 never 1 for an aggregate, never a figure copied from the other window \u2014 and rows dropped as null or unbinnable are reported in excludedBaseline/excludedCurrent rather than absorbed into the denominator. SAFE USE: contributors and examples must respect the safe-use boundary \u2014 bucket ranges, masked or offset-based for any sensitive column named there \u2014 and no example may reproduce enough rows to reconstitute either window. DEPENDENCIES: Follow only the explicit per-step access and temporary tool-runtime permissions. Record pinned versions; do not place environments in delivered files. Never hard-code a passing result, never embed credentials (read connection settings from the environment), and never soften a tolerance the human approved \u2014 if a tolerance now looks wrong, the scorecard says so in notes and still reports the verdict as approved. EXIT-CODE CONTRACT for checks.sh (the observed systematic failure): finding shift IS the audit succeeding \u2014 checks.sh MUST exit 0 whenever every approved rule executed to completion against the full declared data of both windows, REGARDLESS of how many features turned out to have shifted (shift belongs in the scorecard, not the exit code). Exit nonzero ONLY when: a rule could not execute, an output artifact could not be written, or a seeded control disagrees with control-spec.json (one with expectTrip:true did not trip, or one with expectTrip:false did). checks.sh must also PRINT a one-line summary (rules executed, features shifted, each control's feature and whether it tripped) so its log is never empty. RUNTIME BUDGET: when the brief declares one, checks.sh ENFORCES it and fails loudly on overrun \u2014 guard the long stages (`timeout <seconds>` where the host has it, otherwise a recorded start time and an explicit elapsed-vs-budget comparison), exit non-zero naming the rule or stage that exceeded and by how much, and record measured elapsed seconds per stage in the scorecard under \"timing\": {\"budget\":str,\"stages\":[{\"stage\":str,\"seconds\":number}],\"withinBudget\":bool}. A budget is never met by profiling a sample of a window, dropping an approved rule, or skipping the seeded control \u2014 if the honest comparison cannot fit, the run fails and says which rule was too slow. When the brief says the budget is unspecified, impose none and invent none. ENVIRONMENT: honour what the brief declares about where this runs \u2014 if it states there is no network egress, do not plan an install path that needs one (stay in the stdlib or the engine already present, and say so), if it names an engine or interpreter use that one, and read every connection setting from the environment it names rather than hard-coding it.\nRead ../profile/window-profiles.json, ../profile/control-spec.json, ../profile/control-counts.json and ../rules/shift-rules.json as immutable inputs. Use the SAME approved rule program for real data and each matching fixed control; do not copy achieved values from the control specification. Fractional synthetic control weights must not be rounded or cast to integers. Recompute shares from emitted weights. Report each negativeControls entry with declaredBy copied exactly, and source:\"sdk-control\". For category-emergence use max(total current share of new categories, total baseline share of vanished categories), in the approved unit. For rate-delta use the named final shared positive bin. PSI uses a 1e-9 floor on each share; KL is current-to-baseline and floors baseline shares at 1e-9. Control weights are synthetic, never the primary window evidence. For zero tolerance, zero movement is stable and positive movement is shifted; positive tolerances breach at or above the boundary. Write shift-scorecard.json in the current folder. Run exactly sh checks.sh as a separate SDK command after completing every code edit; only read and hand off after it succeeds.",
+      "produces": [
+        "rules/<rule_id>.sql (or .py) : one file per approved rule, computing its statistic from the per-bin counts of both windows.",
+        "checks.sh : runs every approved rule and the fixed control, prints a one-line summary, and writes the scorecard.",
+        "shift-scorecard.json : window identities, per-rule values with checked and excluded counts for both windows, top contributing bins, verdicts, notRun, the negative controls and the severity rollup."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Recomputes each shifted verdict from the reported value and the approved tolerance, and rejects rule identity or tolerance changed after approval.",
+        "Independently recalculates every control statistic from the host-written control counts and requires the reported value, verdict and metadata to match.",
+        "Requires audit window identity, rows and scan scope to match the measured profile, and checked plus excluded rows to account for each window.",
+        "Recomputes the severity rollups and the shifted/stable totals from the individual rule rows.",
+        "Requires every approved rule to appear exactly once, with notRun empty."
+      ],
+      "proves": [
+        "Every approved rule ran, and its verdict is the tolerance comparison the host computed from the reported value.",
+        "The fixed control moved exactly as the host itself calculated, and tripped precisely when the specification said it should."
+      ],
+      "doesNotProve": [
+        "That a reported statistic came from the real windows: the host recalculates the control from its own counts and takes the rest from the model's report.",
+        "That drift is present or absent in the population; a rule nobody approved is never evaluated.",
+        "That the control weights represent real data. They are synthetic, exist only as the negative case, and never stand in for a real window."
+      ],
+      "requires": [
+        "dataset-shift-profile",
+        "dataset-shift-rules"
+      ],
+      "approvalAfter": "dataset-shift-rules"
+    },
+    {
+      "id": "reconciliation-profile",
+      "title": "Reconciliation: measure inputs",
+      "summary": "Measures both sources at the declared shared grain before any equation is written: identity and read path, stored and grain row counts, the observed period, and per measure the total at full stored precision with the rows entering and dropped from it. It also measures key coverage on both sides and the filters each side is observably applying. A side that cannot be reached is marked unverified; a total is never inferred from the other side.",
+      "description": "Profile BOTH declared sources for real, BEFORE proposing any accounting equation, and profile them AT THE SHARED GRAIN declared in the brief \u2014 a reconciliation is only meaningful when both sides are rolled up to the same thing. READ THEM INDEPENDENTLY where it is feasible: reach each source by its own path (its own query, its own file, its own parser) rather than deriving one side by transforming the other, because two numbers produced through a single transform agree by construction and prove nothing about the two dashboards; where an independent path is genuinely not available, say so explicitly and name what the shared path is. Report, per side: the identity of what you actually read, whether you reached it (verified), the row count as stored, the row count AFTER rolling up to the shared grain, the period actually covered (observed min and max of the time column, not the period the brief claimed), and the scan mode. Then, at the shared grain, per side: (1) GRAIN UNIQUENESS \u2014 whether the declared key columns are unique on that side, with the duplicate-key count and the measure amount those duplicates carry, because a duplicated key is a silent multiplier and a reconciliation run over a non-unique grain compares one side against a double count; (2) per declared measure, the TOTAL at full stored precision (never a rounded headline figure), the rows entering that total, and the rows dropped from it as null or non-numeric with their count; (3) the segment vocabulary of every dimension the brief's grain names, with the values present on one side and absent from the other; (4) KEY COVERAGE \u2014 how many grain keys exist on A and not B, on B and not A, and on both, each with the measure amount those keys carry, because an unmatched key set is usually the whole story and it disappears the moment you only compare totals; (5) the filters each side is OBSERVABLY applying (a value that never appears, a date range that stops early, a status that is always one thing), whether or not the brief named them. Also report COMPARABILITY HAZARDS: a measure defined differently on each side per the brief, differing currency or unit, differing rounding precision, a timezone or date-boundary difference that moves rows between periods, differing deduplication, late-arriving or restated rows and any as-of/snapshot timestamp, and a type difference in a key column that would break the join. A measure that means two different things on the two sides is not a discrepancy \u2014 it is two measures, and it must be named as such here rather than surface later as an unexplained delta. Respect the safe-use boundary: segment labels and examples only as that boundary permits, never a raw value from a column named sensitive there. If either side cannot be reached, mark it verified:false and say what is missing \u2014 NEVER invent a total, never round a number you did not observe, and never profile one side and infer the other. DEPENDENCIES: Use only explicitly enabled step access and temporary tool setup. Record pinned versions; keep environments and temporary source copies outside delivered files or remove them before the final checks.sh run completes. Write source-profiles.json and return the same JSON: {\"sourceA\":{\"identity\":str,\"readPath\":str,\"verified\":bool,\"rowsStored\":number,\"rowsAtGrain\":number,\"periodObserved\":str,\"scanned\":\"full\"|\"sample\",\"sampleNote\":str,\"grainUnique\":bool,\"duplicateKeys\":number,\"duplicateKeyAmount\":number},\"sourceB\":{same shape},\"independentReadPaths\":bool,\"readPathNote\":str,\"grain\":{\"declared\":str,\"keyColumns\":[str]},\"measures\":[{\"name\":str,\"definitionA\":str,\"definitionB\":str,\"totalA\":decimal_string,\"totalB\":decimal_string,\"observedDelta\":decimal_string,\"rowsA\":number,\"rowsB\":number,\"droppedA\":number,\"droppedB\":number,\"precision\":str,\"commensurable\":bool,\"note\":str}],\"segments\":[{\"dimension\":str,\"valuesOnlyInA\":[str],\"valuesOnlyInB\":[str],\"valueCountA\":number,\"valueCountB\":number}],\"keyCoverage\":{\"onlyInA\":{\"keys\":number,\"amount\":decimal_string},\"onlyInB\":{\"keys\":number,\"amount\":decimal_string},\"inBoth\":{\"keys\":number}},\"observedFilters\":[{\"side\":\"A\"|\"B\",\"filter\":str,\"evidence\":str}],\"comparabilityHazards\":[str],\"toolchain\":{},\"openQuestions\":[str]}.\nCreate checks.sh and run exactly sh checks.sh as a separate SDK command. Every artifact must be final before this command finishes; only read and hand off afterwards. Preserve the caller sharedGrain string exactly in grain.declared. Use full-precision decimal strings for all amounts (up to 24 decimal places; no exponent), including duplicateKeyAmount, totals, deltas and exclusions. Never emit an aggregate money amount across different measures or units. Rows are measured at the shared grain after aggregation. The host requires uniqueness on both sides; fail with evidence when it cannot be established.",
+      "produces": [
+        "checks.sh : reads both sources and writes the profile; run exactly once as a separate SDK command.",
+        "source-profiles.json : the declared grain and keys, both source identities, read paths and counts, per-measure totals with exclusions, key coverage, segments, observed filters and hazards."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Requires the declared shared grain and key columns to be preserved and unique on both sides, with zero duplicate keys.",
+        "Recomputes each measure's delta as A minus B in exact decimal arithmetic and rejects a reported delta that disagrees.",
+        "Requires measured rows plus exclusions to account for each side's grain row count, and key coverage to account for both grain counts.",
+        "Requires both sides to use the same scan scope and every declared measure to be profiled exactly once."
+      ],
+      "proves": [
+        "Both sources were measured at the same declared grain, with unique keys and exclusions accounted for.",
+        "The totals and deltas in the profile are arithmetically consistent at full precision."
+      ],
+      "doesNotProve": [
+        "That the totals match the real sources: the host checks the report, not the systems behind it.",
+        "That the two read paths are genuinely independent. The report describes their independence; that description is not verified.",
+        "That an observed filter is the whole reason the two sides differ."
+      ],
+      "inputs": {
+        "required": [
+          "sourceA",
+          "sourceB",
+          "sharedGrain",
+          "keyColumns",
+          "measures",
+          "tolerances"
+        ],
+        "optional": [
+          "knownDifferences"
+        ]
+      },
+      "inputTables": {
+        "measures": {
+          "label": "Measures",
+          "uniqueBy": "measure",
+          "minRows": 1,
+          "maxRows": 32,
+          "columns": [
+            {
+              "id": "measure",
+              "label": "Measure",
+              "required": true
+            },
+            {
+              "id": "definitionA",
+              "label": "Definition in A",
+              "required": true
+            },
+            {
+              "id": "definitionB",
+              "label": "Definition in B",
+              "required": true
+            }
+          ]
+        },
+        "tolerances": {
+          "label": "Tolerances",
+          "uniqueBy": "measure",
+          "minRows": 1,
+          "maxRows": 32,
+          "columns": [
+            {
+              "id": "measure",
+              "label": "Measure",
+              "required": true
+            },
+            {
+              "id": "unit",
+              "label": "Unit",
+              "required": true,
+              "options": [
+                "percent_of_a",
+                "percent_of_b",
+                "absolute",
+                "count",
+                "exact"
+              ]
+            },
+            {
+              "id": "value",
+              "label": "Value",
+              "format": "decimal",
+              "hint": "Use a nonnegative decimal. Exact match may be blank or zero."
+            },
+            {
+              "id": "segmentValue",
+              "label": "Per-segment value",
+              "format": "decimal"
+            },
+            {
+              "id": "segmentUnit",
+              "label": "Per-segment unit",
+              "options": [
+                "percent_of_a",
+                "percent_of_b",
+                "absolute",
+                "count",
+                "exact"
+              ]
+            },
+            {
+              "id": "setBy",
+              "label": "Set by"
+            }
+          ]
+        },
+        "knownDifferences": {
+          "label": "Known differences",
+          "uniqueBy": "name",
+          "minRows": 0,
+          "maxRows": 64,
+          "columns": [
+            {
+              "id": "name",
+              "label": "Difference",
+              "required": true
+            },
+            {
+              "id": "side",
+              "label": "Side",
+              "required": true,
+              "options": [
+                "A",
+                "B",
+                "both"
+              ]
+            },
+            {
+              "id": "filter",
+              "label": "Filter predicate"
+            },
+            {
+              "id": "owner",
+              "label": "Owner"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "reconciliation-rules",
+      "title": "Reconciliation: review plan",
+      "summary": "Writes one executable equation per reconcilable measure: both sides' totals, the named filter terms that explain the gap with their predicates, sides and directions, and the remainder that stays unexplained. Each equation keeps the tolerance from that measure's own row, in that row's unit. A measure that cannot be computed on both sides at the shared grain is unexpressible with its reason, and a residual bucket with no predicate \u2014 timing, misc, rounding \u2014 is not a named filter and stays unexplained.",
+      "description": "Propose the RECONCILIATION RULES \u2014 one accounting equation per measure \u2014 from the MEASURED profiles of both sides and the TABLES the owner declared in the brief: one measure row per equation (with the definition each side uses), one tolerance row per measure (with its unit), one known-difference row per named term. ONE MEASURE, ONE TOLERANCE: an equation's tolerance is the number on THAT measure's own tolerance row, in THAT row's unit \u2014 never another measure's, never a default, never a value derived from the delta the profile just measured. The shape of every equation is the same and it is the whole point of this recipe: totalA = totalB + (named filter terms) + unexplained. Each equation carries: a stable id (kebab-case); the measure; the human statement of the equation written out with its term names; both sides' totals from the profile; the observed delta; and the TERMS. A term is a NAMED FILTER: it has a kebab-case id prefixed `filter:`, a plain-language name, an EXECUTABLE predicate that selects exactly the rows it claims (a SQL WHERE clause or an equivalent expression over columns that exist in the profile), the side that applies it, the direction it moves the equation, its source (`declared` when it comes from the owner's knownDifferences, `profile` when the profile found it and the owner did not name it), and one sentence on why those rows are legitimately in one dashboard and not the other. NO RESIDUAL BUCKETS: a term called `other`, `timing`, `misc`, `rounding` or `definitional differences` that has no predicate capable of selecting rows is NOT a named filter \u2014 it is unexplained, and it must be left in unexplained rather than absorbed as an explained term. That single substitution is how a reconciliation lies, and it is rejected here. Also derive: (1) a PER-SEGMENT BREAKDOWN PLAN \u2014 the dimension (or dimensions) the deltas will be reported across, taken from the shared grain, with the rule that per-segment deltas MUST sum to the measure's total delta and per-segment explained amounts MUST sum to the measure's explained amount, so the segment table can be checked against the equation rather than merely accompany it; (2) a GRAIN UNIQUENESS precondition per side, because an equation evaluated over a non-unique grain is arithmetic over a double count; (3) equations or terms for the comparability hazards the profile actually found (an unmatched key set, a timezone boundary moving rows between periods, a rounding-precision difference) even where the owner did not think to name them. Each equation also carries its TOLERANCE \u2014 the value at or below which the unexplained remainder counts as agreement, in the UNIT that measure's row declared (percent_of_a and percent_of_b are different denominators and must not be interchanged), WITH where it came from, plus toleranceOrigin: \"declared\" when the number and unit are exactly the ones on that measure's row and \"proposed\" when you are suggesting one the owner did not state \u2014 a proposed tolerance is a separate decision for the human and must never be presented as theirs \u2014 plus any tighter per-segment tolerance, and the severity of failing it (blocker | major | minor) with, in one concrete sentence, WHICH decision or report is wrong if this measure does not reconcile. A severity with no named consequence is not a severity, it is a mood. Note explicitly which equations the profile suggests will NOT balance \u2014 a reconciliation whose tolerances were all set above the gap the data already shows tells the owner nothing. Respect the safe-use boundary in every predicate and example. Write recon-rules.json and return the same JSON: {\"equations\":[{\"id\":str,\"measure\":str,\"statement\":str,\"totalA\":decimal_string,\"totalB\":decimal_string,\"observedDelta\":decimal_string,\"terms\":[{\"id\":str,\"name\":str,\"predicate\":str,\"side\":\"A\"|\"B\",\"direction\":\"+\"|\"-\",\"source\":\"declared\"|\"profile\",\"why\":str,\"expectedAmount\":number}],\"tolerance\":{\"value\":number,\"unit\":\"percent_of_a\"|\"percent_of_b\"|\"absolute\"|\"count\"|\"exact\",\"segmentValue\":number,\"source\":str},\"toleranceOrigin\":\"declared\"|\"proposed\",\"severity\":\"blocker\"|\"major\"|\"minor\",\"why\":str,\"expressible\":bool,\"expectedToBalance\":bool,\"profileEvidence\":str}],\"segmentPlan\":{\"dimension\":str,\"segments\":[str],\"mustSumToTotal\":true,\"note\":str},\"preconditions\":[{\"id\":str,\"check\":str,\"why\":str}],\"unexpressible\":[{\"measure\":str,\"why\":str}],\"coverageNotes\":str}. THRESHOLD DISCIPLINE (the observed systematic failure): a tolerance is either the owner's number for THAT measure (toleranceOrigin \"declared\") or your proposal for a measure they did not cover (toleranceOrigin \"proposed\"). There is no third source: not another measure's number, not a default, and above all NEVER the delta the profile just measured. Never widen a declared tolerance to fit the measured gap. A legitimate owner tolerance remains valid even if it is close to the observed discrepancy. DENOMINATOR DISCIPLINE: an equation's report `checkedA` and `checkedB` counts must equal the rows actually entering each side's total at the DECLARED SHARED GRAIN \u2014 never 1 for an aggregate total, never the row count of a side the check did not read, and never the same number for both sides unless both sides genuinely have it. Rows dropped from a total (a null measure, an unjoinable key, a row that could not be rolled up) are reported as excluded with their count AND the measure amount they carry, not silently absorbed into the total. A term's amount is likewise the amount its predicate actually selects, with the row count behind it. UNEXPRESSIBLE: if a measure cannot be computed on both sides at the shared grain (it exists on one side only, its two definitions are not commensurable, or the grain cannot be reached on one side), it is UNEXPRESSIBLE: record it in unexpressible[] with the reason \u2014 do not emit it as an equation with a synthetic term, a borrowed total, or a tolerance wide enough to swallow the difference. DEFINITION VS DISCREPANCY: a measure whose business definition genuinely differs between the two sides belongs in unexpressible[] or in a term that names the definitional difference with an executable predicate \u2014 never in an equation that reports a vocabulary difference as a gap in the data.\nRead ../profile/source-profiles.json. Preserve each declared measure and its exact tolerance; do not introduce undeclared measures or propose replacement thresholds. Additional profile-derived filters must have executable predicates and be visibly marked source:profile for human review. Mark incompatible measures unexpressible. All amounts are full-precision decimal strings. If segmentValue is supplied, preserve segmentUnit too. If absent, omit both; the segment check inherits the measure tolerance, with any percentage applied to that segment's own absolute A or B total. Exact tolerance is zero, and a percentage of a zero total permits zero unexplained only. Do not execute equations before approval.",
+      "produces": [
+        "recon-rules.json equations[]: id, measure, statement, terms as named executable filters with predicate, side, direction and expected amount, tolerance with origin, severity, why and profileEvidence.",
+        "unexpressible[]: each declared measure that cannot be reconciled at the shared grain, with the reason.",
+        "segmentPlan and preconditions: the complete segment partition that must sum to the total, and the grain conditions the reconciliation assumes."
+      ],
+      "recomputes": [
+        "Requires every declared measure to be exactly one of an equation or an unexpressible entry, and refuses measures nobody declared.",
+        "Requires each equation's tolerance to be the exact owner value and unit for that measure, including a separately declared per-segment tolerance.",
+        "Requires equation evidence \u2014 both totals and the observed delta \u2014 to equal the measured profile in exact decimal arithmetic.",
+        "Requires each declared filter term to match its owner row exactly in name, side and predicate, and every term to be a named executable predicate.",
+        "Requires a segment plan that must sum to the total, and at least two stated grain preconditions."
+      ],
+      "proves": [
+        "Every declared measure is either reconcilable through an executable equation or explicitly excluded with a reason.",
+        "The owner's tolerances and declared filters reached the equations unchanged."
+      ],
+      "doesNotProve": [
+        "That a filter predicate selects the rows its name claims, or that the explained terms are the real causes of the gap.",
+        "That the equations will balance; nothing has been executed at this step.",
+        "That the segment partition is meaningful, only that it is declared complete."
+      ],
+      "requires": [
+        "reconciliation-profile"
+      ]
+    },
+    {
+      "id": "reconciliation-audit",
+      "title": "Reconciliation: check results",
+      "summary": "Executes the approved equations at the shared grain and reports, per measure, both totals, each named filter's amount and rows, the unexplained remainder and the tolerance verdict, plus a segment table locating every nonzero remainder including gaps that cancel. Two seeded controls \u2014 a dropped-key and an altered-segment change on a copy of side A \u2014 must show up in the unexplained residual rather than being absorbed into a named term. This step reconciles; it does not repair.",
+      "description": "Execute the APPROVED equations against BOTH declared sources and emit the reconciliation under ./. WRITE BOUNDARY: this node reconciles, it does not repair. Both declared sources are READ-ONLY \u2014 no UPDATE, no DELETE, no schema change, no 'corrected' copy written back to either side, and above all no adjustment applied to one side to make it match the other; every byte you write goes under ./. Emit: (1) ./equations/<equation_id>.sql (or .py where SQL cannot express it) \u2014 one file per approved equation, each computing both sides' totals at the shared grain, each term's amount and row count from its approved predicate, and the unexplained remainder as the residual of the identity rather than as a number anyone chose; (2) ./segments/<equation_id>.sql \u2014 the per-segment breakdown for the approved dimension, so the delta table is computed rather than narrated; (3) ./control/ \u2014 independently exercise a dropped-key copy and a copy with an altered segment total. Run the SAME approved equation programs on those copies. Choose actual A-side grain rows outside all approved named filters, so the injection cannot legitimately be explained by one of those filters. Keep the original source and B unchanged. (4) ./checks.sh \u2014 a POSIX sh script that RUNS every approved equation and segment breakdown against the FULL declared data of both sides and writes reconciliation-report.json as {\"sources\":{\"a\":{\"identity\":str,\"readPath\":str,\"rows\":number,\"rowsAtGrain\":number,\"periodObserved\":str,\"scanned\":\"full\"|\"sample\",\"sampleNote\":str,\"grainUnique\":bool,\"duplicateKeys\":number},\"b\":{same shape}},\"grain\":str,\"measures\":[{\"id\":str,\"measure\":str,\"statement\":str,\"checkedUnit\":str,\"checkedA\":number,\"checkedB\":number,\"excludedA\":{\"rows\":number,\"amount\":decimal_string},\"excludedB\":{\"rows\":number,\"amount\":decimal_string},\"totalA\":decimal_string,\"totalB\":decimal_string,\"observedDelta\":decimal_string,\"terms\":[{\"id\":str,\"name\":str,\"predicate\":str,\"side\":str,\"amount\":decimal_string,\"rowCount\":number,\"source\":str}],\"explained\":decimal_string,\"unexplained\":decimal_string,\"unexplainedRows\":number,\"unexplainedBySegment\":[{\"segment\":str,\"amount\":decimal_string,\"rows\":number}],\"tolerance\":decimal_string,\"toleranceUnit\":str,\"withinTolerance\":bool,\"balances\":bool,\"balanceResidual\":decimal_string,\"severity\":str,\"query\":str}],\"notRun\":[{\"id\":str,\"why\":str}],\"negativeControls\":[],\"toolchain\":{}} and delta-table.json as {\"dimension\":str,\"rows\":[{\"segment\":str,\"measure\":str,\"checkedA\":number,\"checkedB\":number,\"totalA\":decimal_string,\"totalB\":decimal_string,\"delta\":decimal_string,\"explained\":decimal_string,\"unexplained\":decimal_string,\"tolerance\":decimal_string,\"withinTolerance\":bool}],\"segmentsSumToTotal\":bool,\"segmentSumResidual\":decimal_string}. NON-NEGOTIABLE \u2014 EVERY EQUATION, FULL DATA, BOTH SIDES: every approved equation is computed against the DECLARED sources from the context block, and those observed numbers are the report's primary evidence; the seeded control exists ONLY as the negative case and its numbers never stand in for a real one. An equation that cannot run is recorded in notRun with the reason and counts as a failure of the reconciliation, never as a silent omission and never as 'agreed'. Scanning a sample instead of the full sources is permitted ONLY when a full scan is genuinely infeasible, and then BOTH sides must be sampled the same way over the same keys and sources.scanned must say 'sample' with the size and method \u2014 a delta computed from two differently-drawn samples measures the sampling, not the dashboards. ARITHMETIC HONESTY: unexplained is computed as the residual of the identity (observedDelta minus the signed sum of the term amounts), never assigned; balanceResidual records the arithmetic check of that identity and must be zero to the reported precision. Deltas, totals and term amounts are reported at FULL precision as computed \u2014 rounding to a presentable figure is how a real gap becomes a rounding difference. Every nonzero segment remainder MUST appear in unexplainedBySegment, including when opposite gaps cancel to a zero measure total, with the amounts summing to unexplained, because 'unexplained: $84,201.55' with no location is a number the owner cannot act on. UNITS ON EVERY DENOMINATOR: checkedA and checkedB are bare numbers, and what they count differs by measure \u2014 rows at the shared grain, invoices, files, days. Every measure carries `checkedUnit` naming it in the plural noun a reader would use; a measure without checkedUnit is an incomplete report, and the unit travels with the number into the one-line summary and every example. PLURALISE AGAINST THE COUNT \u2014 \"1 unmatched key\", never \"1 unmatched keys\". NOTES DEFINE WHAT THEY COIN: define any term you invent in the sentence that coins it, and where a note describes a tolerance, say which side of it the boundary case lands on (\"a difference of exactly one cent is WITHIN tolerance\"). DENOMINATOR DISCIPLINE: checkedA and checkedB are the rows that actually entered each side's total at the shared grain \u2014 never 1 for an aggregate total, never a figure copied from the other side \u2014 and rows dropped as null, unjoinable or un-rollable are reported in excludedA/excludedB with their count AND the amount they carry, rather than absorbed into a total. If the grain is not unique on a side, that side's duplicateKeys is reported and the equation reports it rather than quietly summing a double count. SAFE USE: segment labels and examples must respect the safe-use boundary, and no example may reproduce enough rows to reconstitute either source. DEPENDENCIES: Use only explicitly enabled step access and temporary tool setup. Record pinned versions; keep environments and temporary source copies outside delivered files or remove them before the final checks.sh run completes. Never hard-code a passing result, never embed credentials (read connection settings from the environment), and never widen a tolerance the human approved \u2014 if a tolerance now looks wrong, the report says so in notes and still reports the verdict as approved. RUNTIME BUDGET: when the brief declares one, checks.sh ENFORCES it and fails loudly on overrun rather than silently reconciling a sample; when the brief declares none, do not invent an additional script budget; the application run deadline still applies. EXIT-CODE CONTRACT for checks.sh (the observed systematic failure): finding discrepancies IS the reconciliation succeeding \u2014 checks.sh MUST exit 0 whenever every approved equation executed to completion against the full declared data of both sides, REGARDLESS of how large the deltas turned out to be or how much came back unexplained (a discrepancy belongs in the report, not in the exit code). Exit nonzero ONLY when: an equation could not execute, an output artifact could not be written, either control fails to detect the injected change from the original residual (or absorbs it into a named term), or an equation does not BALANCE ARITHMETICALLY \u2014 balanceResidual non-zero, or the per-segment deltas failing to sum to the measure's total delta \u2014 because that is the harness contradicting itself rather than a finding about the data. checks.sh must also PRINT a one-line summary (equations executed, measures within tolerance, unexplained amount per measure with its own unit, and control detection per operation) so its log is never empty.\nRead ../profile/source-profiles.json and ../rules/recon-rules.json as immutable inputs. Write reconciliation-report.json and delta-table.json in the current folder. Use full-precision decimal strings for all amounts, tolerances and residuals (up to 24 decimal places, no exponent). Each executed term preserves direction as well as id/name/predicate/side/source; explained is the signed sum of amounts using those directions. The real totals must still match the measured profiles; otherwise report source change and fail. Every segment row carries toleranceUnit. Inherit the measure tolerance unless an explicit segmentValue/segmentUnit was approved; percentages use absolute local segment totals, including zero. Set checkedUnit to the exact JSON string \"rows\" on every primary and control result; these counts are rows at the shared grain. Include explicit exclusions. Report every nonzero segment in unexplainedBySegment, even if opposite segment gaps cancel in the total. Never add unexplained amounts from different measures into one misleading total.\nnegativeControls is an array containing separate drop-keys and alter-segment cases. seededHow and query are nonempty strings describing the copying and perturbation; do not put objects in these fields. Each case has {id,measure,operation,side:\"A\",source:\"model-fixture\",segment,seededHow,query,rowsBefore,rowsAfter,seededDelta,detectedDelta,detected:true,segmentUnexplainedAfter,result}. result is the full recalculated measure-result object for the controlled copy, with the same approved equation metadata, terms and tolerance. seededDelta is signed (the change in A), not a claimed positive magnitude. detectedDelta must equal controlled unexplained minus ORIGINAL unexplained, never merely the controlled remainder. The change must also appear in the named segment relative to its original remainder, while each named term amount and B total remain unchanged. Drop-keys decreases rows; alter-segment preserves rows. The control tests accounting of an injected discrepancy, independently of whether that amount exceeds the owner's tolerance; result.withinTolerance still uses the approved policy. Record the actual keys/amounts under the safe-use boundary and the exact copying/perturbation query. These are model-authored fixtures, not owner-specified controls. A control failure is execution failure. Run exactly sh checks.sh as a separate SDK command after all code edits, then only read results and hand off.",
+      "produces": [
+        "equations/<equation_id>.sql and segments/<equation_id>.sql : one file per approved equation and its segment breakdown.",
+        "checks.sh : executes every approved equation and both controls, prints a one-line summary and writes the reports.",
+        "reconciliation-report.json : per-measure results with checked and excluded rows, executed terms, explained and unexplained amounts, verdicts, and the negative controls.",
+        "delta-table.json : the per-segment rows whose amounts sum to each measure, each with its own tolerance verdict."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Recomputes the identity A = B + signed terms + unexplained in exact decimal arithmetic and requires the balance residual to be exactly zero.",
+        "Recomputes every agreement verdict from the approved tolerance and its declared denominator, at measure and at segment level.",
+        "Requires segment amounts and row counts to sum exactly to their measure, and every nonzero segment remainder to be located.",
+        "Requires each control to change the unexplained residual by exactly the seeded amount without altering side B or any named term.",
+        "Requires results to name the same measured sources, grain and approved equations, with notRun empty."
+      ],
+      "proves": [
+        "Every approved equation executed, and its arithmetic identity and tolerance verdict hold under the host's own exact-decimal recomputation.",
+        "Each seeded change surfaced in the unexplained remainder and in the declared segment instead of being absorbed."
+      ],
+      "doesNotProve": [
+        "That the reported totals came from the real sources: the host recomputes from the numbers in the report, not from the systems.",
+        "That the explained terms are the true causes of the difference, only that they are arithmetically consistent.",
+        "That the controls establish detection causally: they are model-authored fixtures on a copy, reported by the same program."
+      ],
+      "requires": [
+        "reconciliation-profile",
+        "reconciliation-rules"
+      ],
+      "approvalAfter": "reconciliation-rules"
+    },
+    {
+      "id": "pipeline-change-profile",
+      "title": "Pipeline change: measure inputs",
+      "summary": "Captures the existing pipeline before any change is planned: the declared command executed on a local copy against the declared original data, real baseline output files, the source snapshot identity and as-of evidence, the declared grain and key measurements, and every protected invariant measured with its query and derivation path. At least one protected value is re-derived through a different parse path. An unmeasurable invariant is a failure with a reason, not a quietly reduced contract.",
+      "description": "Perform baseline capture ONLY. The overall workflow goal describes later work: do not implement or test the requested change in this step, even on another temporary copy. Keep only baseline/ snapshots, baseline-report.json, optional source-snapshot.json, and flat helper programs or Markdown notes in this step folder. Capture the actual existing pipeline before planning a change. Copy the required code into baseline/, preserving original behavior, and execute the exact declared runCommand there against the declared original data. Redirect all writes into this step. If the original command cannot safely run from a copy, report the blocker and fail; never fabricate a baseline. Capture real baseline model output files under baseline/, not only remembered totals. Report source snapshot identity (file hashes or table versions, sizes/counts and as-of evidence), actual date/sequence bounds and known downstream consumers. Independently derive at least one protected value from raw data through a different parse path, without importing the pipeline's own calculations. No natural key means candidate keys must be measured, not assumed. Preserve all declared invariants and their own kinds/tolerances; record an unmeasurable invariant as a failure with a reason. Do not quietly reduce the contract.\nWrite baseline-report.json with this exact shape:\n{pipeline:{location:exact input pipelineLocation,command:exact input runCommand,executed:true,models:[{name:string,rowCount:positive integer,file:\"baseline/<nonempty output file>\"}]},snapshot:{identity:string,capturedAt:string},invariants:[{invariant:exact declared name,measure:exact declared measure,kind:\"number\"|\"boolean\"|\"text\",unit:exact declared unit,tolerance:decimal string,baseline:decimal string|boolean|string,measurable:true,query:string,derivationPath:string}],grainCheck:{grain:exact input grain,keyColumns:[declared candidates],duplicateRows:integer,nullKeyRows:integer},independentControl:{invariant:one declared name,value:typed independently computed value,path:string different from that invariant's derivationPath,query:string},consumers:[string],toolchain:{runtime:string,packages:[{name,version}]},issues:[string]}.\nText and boolean invariants use unit exact and tolerance \"0\"; a numeric exact tolerance also uses \"0\". Declare any baseline grain failures as measured issues. Create checks.sh to execute the baseline capture, independent control and report writer. Run exactly sh checks.sh as a separate SDK command after editing, then only read results and hand off.",
+      "produces": [
+        "baseline/ : the copied pipeline code and the real baseline model output files it produced, not remembered totals.",
+        "checks.sh : executes the baseline capture, the independent control and the report writer.",
+        "baseline-report.json : the executed location and command, models with row counts and files, snapshot identity and capture time, every declared invariant with its measured value, and the grain check.",
+        "source-snapshot.json : optional identity evidence for the snapshot the baseline ran against."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Requires the step folder to contain only baseline snapshots, the reports and flat helper programs, so the change cannot be implemented here.",
+        "Requires the exact declared pipeline location and run command to be recorded as executed, with every named baseline output file present, unlinked and nonempty.",
+        "Requires every declared invariant to be measured exactly once, keeping its declared measure, kind, unit and exact owner tolerance.",
+        "Recomputes the independent control against the invariant it names under that invariant's tolerance, and requires its parse path to differ from the invariant's."
+      ],
+      "proves": [
+        "The declared command ran on a copy and produced the baseline output files the report names.",
+        "Every protected invariant has a measured baseline value with its query and derivation path, and one of them was reproduced through a second path."
+      ],
+      "doesNotProve": [
+        "That the copy behaves like the production pipeline, or that the snapshot is the data production reads.",
+        "That a measured baseline is correct; it is what this pipeline produces today, not a verified truth.",
+        "That the discovered list of downstream consumers is complete."
+      ],
+      "inputs": {
+        "required": [
+          "pipelineLocation",
+          "runCommand",
+          "changeRequest",
+          "invariants",
+          "grain",
+          "keyColumns",
+          "safeUse"
+        ],
+        "optional": []
+      },
+      "inputTables": {
+        "invariants": {
+          "label": "Protected invariants",
+          "uniqueBy": "invariant",
+          "minRows": 1,
+          "maxRows": 32,
+          "columns": [
+            {
+              "id": "invariant",
+              "label": "What must stay true",
+              "required": true
+            },
+            {
+              "id": "measure",
+              "label": "Measure or behavior",
+              "required": true
+            },
+            {
+              "id": "kind",
+              "label": "Value type",
+              "required": true,
+              "options": [
+                "number",
+                "boolean",
+                "text"
+              ]
+            },
+            {
+              "id": "unit",
+              "label": "Tolerance unit",
+              "required": true,
+              "options": [
+                "absolute",
+                "count",
+                "exact",
+                "percent_of_baseline"
+              ]
+            },
+            {
+              "id": "tolerance",
+              "label": "Tolerance",
+              "format": "decimal"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "pipeline-change-rules",
+      "title": "Pipeline change: review plan",
+      "summary": "Plans the requested change against the captured baseline: affected models, columns and consumers classified breaking, compatible or internal with reasons; ordered executable migration steps with their immediate checks and reversibility; and a rollback naming a preserved baseline, its possible data loss and its safe window. Every protected invariant carries forward its measured baseline and exact owner tolerance. The new behaviour must be observably false on the captured baseline, and the negative case names the invariants it should break before any result is seen.",
+      "description": "Read ../profile/baseline-report.json and captured baseline outputs. Plan the requested change against those measured facts. Name affected models, columns and downstream consumers, following column changes through dependent models. Classify breaking, compatible or internal impacts with reasons; name consumers that cannot be checked. Provide executable ordered migration steps, immediate checks and reversibility. Rollback must name an existing preserved baseline or actual backup, state possible data loss and the safe rollback window. Do not implement yet.\nWrite change-plan.json as {impact:[{object:string,kind:\"model\"|\"column\"|\"consumer\",change:string,classification:\"breaking\"|\"compatible\"|\"internal\",why:string}],migrationSteps:[{step:string,command:string,reversible:boolean,verifyAfter:string}],rollback:{steps:[string],dataLoss:string,safeWindow:string},invariantImpact:[{invariant:exact declared name,measure:exact declared measure,kind:exact declared kind,unit:exact owner unit,tolerance:exact owner tolerance,baseline:typed captured baseline value,expected:\"unchanged\"|\"within-tolerance\",why:string}],newBehaviour:{statement:string,assertion:executable expression or query as a string,falseOnBaseline:string explaining how the captured baseline fails it},negativeCase:{change:string describing a reproducible mutation of a separate copy,expectedFailures:[exact declared invariant names]},consumerNotes:[string],safeUseNotes:string,rejectedAlternatives:[{alternative:string,whyRejected:string}]}.\nEvery declared invariant appears once, retaining its measured baseline and exact owner tolerance. Reject a requested change that necessarily contradicts an invariant; do not rewrite the invariant to make it pass. The new behavior must be observably false on captured baseline output and true after the change, so a no-op cannot pass. Name missing evidence rather than inventing it.\nBefore approval, describe the copied-data negative change and name its nonempty set of expected failing invariants. Each name must be a distinct declared invariant. Coupled measures may fail together; every invariant outside the approved set must still pass. These expectations are proposed by the agent for review, not independently supplied by the caller.",
+      "produces": [
+        "change-plan.json : classified impact rows, ordered migration steps with commands, reversibility and post-checks, and a rollback with steps, data loss and safe window.",
+        "invariantImpact[] : every declared invariant once, with its captured baseline value, exact owner tolerance and why it will hold.",
+        "newBehaviour : the executable statement and assertion, plus how the captured baseline output fails it.",
+        "negativeCase : the reproducible mutation of a separate copy and the distinct set of declared invariants it is expected to fail."
+      ],
+      "recomputes": [
+        "Requires every declared invariant to appear exactly once, retaining the measured baseline value and the exact owner tolerance.",
+        "Requires an executable new-behaviour statement, its assertion and an explanation of how the captured baseline fails it.",
+        "Requires a nonempty, distinct set of expected failing invariants, each a declared invariant name, fixed before anything is executed.",
+        "Requires classified impacts with reasons, ordered migration steps with commands and post-checks, and a rollback with steps, data loss and safe window.",
+        "Implements nothing: the plan waits for approval."
+      ],
+      "proves": [
+        "The change is described against measured baseline values rather than remembered ones.",
+        "The negative case's expected failures were committed before any result was seen."
+      ],
+      "doesNotProve": [
+        "That the migration steps work, that the rollback is possible, or that the impact list is complete.",
+        "That the new-behaviour assertion captures what the owner actually wanted.",
+        "That these expectations are independent: they are the agent's proposal for human review, not caller-supplied facts."
+      ],
+      "requires": [
+        "pipeline-change-profile"
+      ]
+    },
+    {
+      "id": "pipeline-change-audit",
+      "title": "Pipeline change: check results",
+      "summary": "Implements the approved change in its own copy, runs it against the same original data snapshot, and re-executes every protected invariant, the approved new-behaviour assertion, the grain checks and an independent re-derivation. A separate copied-data fixture, broken the approved way, must fail exactly the approved set of invariants and pass the rest. Migration and rollback are delivered as instructions; nothing is applied to the original source.",
+      "description": "Read ../profile/baseline-report.json, its captured outputs, and ../rules/change-plan.json. Implement the approved change in this step's own copy, keeping every prior artifact unchanged. Deliver every added or modified model/script under models/ (SQL or the pipeline's native format), noting what changed and its approved migration step. Write manifest.json as {models:[{name:string,file:\"models/<file>\",status:\"added\"|\"modified\"|\"unchanged\",changedColumns:[string]}],migrationSteps:exact approved array,rollback:exact approved object,toolchain:{runtime:string,packages:[{name,version}]}}. Include migration and rollback instructions, but do not apply them to the original source. Deliver only safe-use-approved models; staging belongs in a separate working database or must be removed before sealing.\nCreate checks.sh that runs the changed pipeline on the SAME declared original data snapshot, executes EVERY invariant and the approved new-behavior assertion, checks the grain and independently re-derives at least one invariant from raw data using a separate parse path. Use captured baseline outputs to evaluate the same new-behavior assertion on the old result; it must be false there and true on the changed output. No primary evidence may come from synthetic fixtures. If the original source snapshot changed, fail and request a new baseline.\nMake a separate copied-data broken-invariant fixture using the approved negativeCase.change. It must fail exactly the approved negativeCase.expectedFailures set and pass every other protected invariant. Do not select or adjust that set after seeing results. Run the SAME regression functions on the changed real output and this copied negative case. If the fixture passes everything, or the regression cannot run, checks.sh fails. Store the fixture and exact reproduction instructions. The fixture is model-authored; do not label it caller-fixed.\nWrite regression-report.json as {baselineRef:\"../profile/baseline-report.json\",snapshotIdentity:exact original snapshot identity,invariants:[RESULT],changeAssertion:{statement:exact approved statement,assertion:exact approved expression,observed:string,passOnBaseline:false,passOnChanged:true,pass:true},grainCheck:{grain:exact input grain,keyColumns:[exact candidates],duplicateRows:0,nullKeyRows:0,pass:true},independentControl:{invariant:one declared name,value:typed independent value,path:string different from result derivationPath,query:string},negativeCase:{id:\"broken-invariant-fixture\",whatWasBroken:exact approved negativeCase.change,query:string,tripped:true,invariants:[RESULT for every invariant]},consumersChecked:[{consumer:string,result:string}],passed:integer,failed:integer,timing:{budget:string,stages:[{stage:string,seconds:number}],withinBudget:boolean}}.\nRESULT is {invariant:exact declared name,measure:exact declared measure,kind:exact declared kind,unit:exact owner unit,tolerance:exact owner tolerance,expected:typed captured baseline value,observed:typed measured value,delta:exact decimal string for observed minus expected for numbers or null for boolean/text,pass:computed boolean,query:string,derivationPath:string}. Absolute/count boundaries are inclusive. Percent_of_baseline uses the absolute captured baseline value; zero allows only zero difference. Exact means equality. The original baseline expected value and owner tolerance stay identical in real and negative results. The host independently recomputes each negative verdict from reported measurements and owner tolerances, then compares the failing invariant names with the exact approved set, regardless of order. Missing expected failures and additional failures both reject the check; primary results must all pass. This recomputation checks report arithmetic, not causal correctness of model-authored queries or fixtures. Top-level passed and failed count only the primary declared invariants: exclude behavior, grain, independent-control and negative-case checks from those two counts. Every discovered consumer is either checked or explicitly accounted for with missing evidence in its result, never silently omitted. Record actual row counts and relevant date/sequence bounds. checks.sh must exit nonzero for failed primary invariants, no-op behavior, invalid grain, missing execution or an undetected/badly targeted negative case. Print per-invariant results and their denominators. Run exactly sh checks.sh as a separate SDK command after all code edits, then only read results and hand off.",
+      "produces": [
+        "models/<file> : every added or modified model or script, with its status and changed columns.",
+        "checks.sh : runs the changed pipeline on the same snapshot and executes every invariant, the change assertion, the grain check, the independent control and the negative fixture.",
+        "regression-report.json : invariant results with expected, observed and exact deltas; the assertion on baseline and changed output; the grain check; the independent control; the negative case.",
+        "manifest.json : the delivered models plus the approved migration steps and rollback, preserved exactly.",
+        "The copied-data broken-invariant fixture and its exact reproduction instructions, stored in this step."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Recomputes every invariant verdict from its expected and observed values under the exact owner tolerance, and the delta as observed minus baseline.",
+        "Requires expected values to come from the captured baseline and the same snapshot identity, and every protected invariant to pass.",
+        "Requires the approved assertion to be false on captured baseline output and true on changed output, so a no-op cannot pass.",
+        "Recomputes which invariants the negative fixture breaks and requires exactly the approved set, with every other invariant passing.",
+        "Requires the manifest to preserve the approved migration steps and rollback unchanged, with real model files delivered under models/.",
+        "Recomputes the independent control through a parse path different from the result's, and requires zero duplicate and zero null-key rows at the declared grain."
+      ],
+      "proves": [
+        "The changed pipeline ran against the same snapshot and every protected invariant still holds within its owner tolerance.",
+        "The approved new behaviour is observable on the changed output and absent from the captured baseline.",
+        "The regression program detected the approved breakage: the copied fixture failed exactly the invariants it was meant to."
+      ],
+      "doesNotProve": [
+        "That the change is correct beyond the invariants someone declared; unprotected behaviour is not checked.",
+        "That the negative fixture establishes detection causally. It is model-authored and reported by the same program, and is never caller-fixed.",
+        "That the migration or rollback was performed; both are delivered as instructions, not applied.",
+        "That downstream consumers are unaffected: consumers that could not be checked are named, not covered."
+      ],
+      "requires": [
+        "pipeline-change-profile",
+        "pipeline-change-rules"
+      ],
+      "approvalAfter": "pipeline-change-rules"
+    },
+    {
+      "id": "data-pipeline-profile",
+      "title": "Data pipeline: measure inputs",
+      "summary": "Measures every declared source in full before any model exists: access, schema, identity, row counts, column types with null and distinct counts, candidate-key duplicates, timestamp bounds and lag evidence. Every declared measure is also computed independently from raw sources through a named parse path and executable query, so the finished pipeline is later compared against a control captured before it was built. Unavailable sources fail explicitly; totals are never inferred from column names.",
+      "description": "Measure all declared sources BEFORE designing or building models. Read every source in full, verify access and schema, record source identities (hashes or versions), actual row counts, column types/null/distinct counts, candidate-key duplicate counts, timestamp bounds and lag evidence. Finished-table keys can be derived: do not assume they already exist in raw sources. Identify duplicates, encoding/timezone uncertainty, sentinel values, soft-deletes and test rows. Preserve sensitive-field rules; use counts or masked examples. Independently compute EVERY declared measure from raw sources using its business definition, with a named parse path and executable query. These controls are captured before the pipeline exists. Fail explicitly for unavailable sources or controls; never substitute synthetic data or infer totals from column names.\nWrite source-profile.json as {declaredSources:exact inputs.sources,sources:[{name:string,readPath:string,identity:string,verified:true,rows:nonnegative integer,scanned:\"full\",columns:[{name,type,nullCount,distinctCount}],candidateKeys:[{columns:[string],unique:boolean,duplicateRows:integer}],observedRange:string,observedLag:string,issues:[string]}],controls:[{measure:exact declared name,definition:exact definition,unit:exact owner unit,tolerance:decimal string,value:decimal string,query:string,derivationPath:string}],assumptions:[string],openQuestions:[string]}. Record missing timestamp evidence explicitly instead of fabricating a time. Zero-row sources are allowed if actually observed and disclosed. checks.sh must execute profiling and independent controls and write this report. Do not build the future pipeline in this step.",
+      "produces": [
+        "checks.sh : executes the profiling and the independent controls and writes the profile.",
+        "source-profile.json sources[] : per source the read path, identity, verified full scan, rows, columns with null and distinct counts, candidate keys, observed range and lag, and issues.",
+        "controls[] : one independent control per declared measure, with its value, executable query and named raw-source parse path."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Requires the exact declared sources, each verified with a full scan, an identity, a read path and an observed row count.",
+        "Rejects column null or distinct counts larger than the source row count, and a candidate key whose unique flag disagrees with its duplicate count.",
+        "Requires one independent control per declared measure, preserving the owner's definition, unit and tolerance, with an executed query and a named parse path."
+      ],
+      "proves": [
+        "Every declared source was read in full and measured, and every requested measure has a control value captured before the pipeline existed.",
+        "Finished-table keys were measured rather than assumed to already exist in raw data."
+      ],
+      "doesNotProve": [
+        "That the control values are correct: they are the model's own computation, checked for shape and arithmetic, not for truth.",
+        "That the sources are complete or current; observed range and lag are recorded as evidence, not validated.",
+        "That a source the profile never named is irrelevant."
+      ],
+      "inputs": {
+        "required": [
+          "sources",
+          "targetStore",
+          "grain",
+          "keyColumns",
+          "measures",
+          "maxLag",
+          "safeUse"
+        ],
+        "optional": [
+          "refreshDeadline",
+          "lateArrival",
+          "runtimeBudget",
+          "handover"
+        ]
+      },
+      "inputTables": {
+        "measures": {
+          "label": "Numbers to produce",
+          "uniqueBy": "measure",
+          "minRows": 1,
+          "maxRows": 32,
+          "columns": [
+            {
+              "id": "measure",
+              "label": "Number to produce",
+              "required": true
+            },
+            {
+              "id": "definition",
+              "label": "Business definition",
+              "required": true
+            },
+            {
+              "id": "unit",
+              "label": "Allowed difference unit",
+              "options": [
+                "exact",
+                "absolute",
+                "count",
+                "percent_of_control"
+              ],
+              "default": "exact"
+            },
+            {
+              "id": "tolerance",
+              "label": "Allowed difference",
+              "format": "decimal"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "data-pipeline-rules",
+      "title": "Data pipeline: review plan",
+      "summary": "Designs the simplest useful set of typed models from the measured sources: one named output model owning the declared finished grain and keys, each model's columns, materialization, build strategy and dependencies, and a map from every declared measure to its actual output column and expression, keeping the control captured at the profile step. Lag ceiling, refresh deadline and late-arrival behaviour stay separate declared facts, and missing optional policies stay undeclared. Nothing is implemented before approval.",
+      "description": "Read PROFILE/source-profile.json. Design the simplest useful model dependencies from those measured facts. A single model may read sources directly; add preparation or intermediate models only when useful. Apply required confidential-field removal/masking before delivery. Name one outputModel that owns the declared finished grain and keys. Every measured source must contribute to that output through its declared dependencies; no staging/intermediate/mart layer taxonomy is required. Keep all requested measures and owner tolerances; preserve the already-measured independent controls. Do not implement before approval.\nWrite pipeline-plan.json as {targetStore:exact input targetStore,outputModel:approved finished model name,models:[{name:safe SQL identifier,grain:string,keyColumns:[string],upstreams:[{kind:\"source\"|\"model\",name:string}],columns:[{name:safe SQL identifier,type:string,description:string}],materialization:string,incrementalStrategy:string,tests:[string]}],measureMap:[{measure:declared name,definition:exact definition,unit:exact unit,tolerance:decimal string,model:outputModel name,column:actual output column,expression:string,exclusions:[string],controlQuery:exact profile control query,controlPath:exact profile control derivationPath}],freshness:{maxLag:exact input maxLag,refreshDeadline:input refreshDeadline or \"\",lateArrival:input lateArrival or \"\",verification:string,lateArrivalStrategy:string},safeUseNotes:string,publicationPlan:string,rejectedDesigns:[{design,whyRejected}]}.\nModels are in dependency order. Source upstream names refer to the measured sources; model upstream names refer to earlier models. Upstreams are unique by kind and name; source and model names have separate namespaces. Keep lag ceiling, external refresh trigger/deadline and late-arrival/restatement behavior separate. Missing optional policies stay undeclared. Plan repeated builds so they do not duplicate or change results on unchanged input. Explain how actual freshness can be checked or what metadata is missing.",
+      "produces": [
+        "pipeline-plan.json : the target store and the named output model, with 1-32 typed models in dependency order carrying columns, keys, upstreams, materialization, incremental strategy and tests.",
+        "measureMap[] : every declared measure mapped to its actual output column and expression, with the profile's control query and parse path preserved.",
+        "freshness, safeUseNotes, publicationPlan and rejectedDesigns : the declared timing facts, confidential-field handling, the delivery boundary and the designs that were rejected."
+      ],
+      "recomputes": [
+        "Requires the requested target engine and one named output model carrying the declared grain and finished-table keys.",
+        "Walks the upstream graph and requires every measured source to contribute to the output model through declared dependencies; no layer naming scheme is accepted as coverage.",
+        "Requires each model's keys to exist among its own columns, and upstreams to be distinct and ordered after their sources and earlier models.",
+        "Requires every declared measure to map exactly once to a real output column, preserving the owner's definition, unit and tolerance and the profile's control query and path.",
+        "Requires maximum lag, refresh deadline and late-arrival policy to be kept as the exact declared facts, with a verification and a late-arrival strategy stated."
+      ],
+      "proves": [
+        "The planned dependencies cover every measured source and terminate at one approved output model at the declared grain.",
+        "Every requested measure has a planned home and keeps its owner tolerance and its pre-existing independent control."
+      ],
+      "doesNotProve": [
+        "That the SQL will produce correct results; no model has been built or executed at this step.",
+        "That the design is a good one, only that it is complete and internally consistent.",
+        "That the freshness contract can be met; the plan states how it would be checked."
+      ],
+      "requires": [
+        "data-pipeline-profile"
+      ]
+    },
+    {
+      "id": "data-pipeline-audit",
+      "title": "Data pipeline: check results",
+      "summary": "Builds the approved models against the full declared sources with the requested engine and verifies the result: source row accounting, grain uniqueness and non-null keys on the actual output, every measure reproduced against the control captured before the pipeline existed, a repeated build that changes nothing, the declared freshness behaviour, and a duplicate-key fixture the same assertion must reject. Delivery contains only the approved output model, and nothing is published or deployed to an external system.",
+      "description": "Read PROFILE/source-profile.json and RULES/pipeline-plan.json as immutable inputs. Implement and EXECUTE the approved SQL against the full declared sources with the requested engine. Deliver flat models/<name>.sql files and checks.sql. Do not substitute an easier engine or fixture data for the real build; fail with the missing engine/access requirement when necessary. Write manifest.json as {targetStore:exact approved target,outputModel:exact approved outputModel,models:[each exact approved model object plus file:\"models/<name>.sql\"],toolchain:{runtime:string,packages:[{name,version}]}}. Deliver a native database or reloadable export under delivery/, containing only the approved outputModel. Other working tables stay in a separate working database or are removed from the delivery. Do not publish or deploy to an external system.\nRun the same build twice on unchanged input and prove row count and every measure are unchanged. For source accounting, raw input rows equal retained source rows plus disjoint named exclusions; retained rows equal measured source contributions before aggregation. The final output row count is separate: grouping several source rows into one output row is legitimate. Execute grain uniqueness/non-null checks on actual output columns. Reproduce every control from the original raw source through its independent parse path; compare the output totals with those original controls using exact decimal arithmetic and the owner's unit/tolerance. Verify source identities still match the profile. Enforce declared lag/late-arrival behavior, including a late-row case when that policy was supplied; name missing timing metadata rather than claiming a schedule was installed.\nCreate a clean model-authored grain fixture and a copied variant with exactly one additional duplicate key. Run the SAME grain assertion on both. It must find zero duplicates/null keys in the clean seed and exactly one excess duplicate in the changed seed, with no null keys. Fixtures are additional controls, never primary evidence.\nWrite verification-report.json as {sources:[{name,identity,rows}],rowAccounting:[{source,inputRows,retainedRows,contributedRows,excluded:[{filter:string,rows:integer}],query:string}],grainCheck:{model:outputModel name,grain:exact owner grain,keyColumns:exact owner keys,rows:integer,duplicateRows:0,nullKeyRows:0,query:string},measures:[{measure,definition,unit,tolerance,expected:original control value,reproducedControl:same value,observed:output total,delta:observed minus expected,controlQuery:original control query,controlPath:original control path,modelPath:different actual SQL/model parse path,pass:true}],negativeCase:{source:\"model-fixture\",file:\"fixtures/<file>\",query:exact grain query,baseline:{rows:positive integer,duplicateRows:0,nullKeyRows:0},mutated:{rows:baseline plus one,duplicateRows:1,nullKeyRows:0},detected:true},publication:{file:\"delivery/<database or export>\",tables:[outputModel name],query:string},replay:{rowsBefore:output row count,rowsAfter:same,measuresBefore:[{measure,value}],measuresAfter:[{measure,value}],query:string,pass:true},freshness:{maxLag:exact input,refreshDeadline:input or \"\",lateArrival:input or \"\",observed:string,query:string,pass:true,lateCase:{performed:boolean,observation:string,query:string,pass:boolean}},checks:[{id:\"row-accounting\"|\"key-uniqueness\"|\"measure-reproduction\"|\"negative-duplicate-key\",pass:true,expected:string,observed:string,query:string}],passed:4,failed:0,timing:{budget:string,stages:[{stage:string,seconds:number}],withinBudget:true}}.\nTop-level passed/failed count exactly the FOUR named check families, excluding replay and freshness checks. Every measure value/delta/tolerance is a full-precision decimal string. Absolute/count thresholds are inclusive; percent_of_control uses the absolute captured control, with zero permitting zero difference only. Preserve each approved measure definition and tolerance. A missing late-arrival policy means lateCase.performed:false with its absence explained, not an invented policy. For a declared policy execute the scenario and report pass:true with the reproduction query. checks.sh must execute every assertion, both builds and controls, print the measured counts, and exit nonzero on a failed check, source change, missed control or declared runtime overrun. Do not meet a budget by sampling, dropping checks or relaxing tolerances.",
+      "produces": [
+        "models/<name>.sql and checks.sql : the delivered models and the verification SQL, flat in this step's folder.",
+        "checks.sh : runs the build, the verification checks, the repeat build and the fixtures.",
+        "manifest.json : the approved target and output model with the exact approved model definitions and their files, plus the pinned runtime and package versions.",
+        "verification-report.json : executed sources, row accounting, grain check, measure results with deltas, negative case, publication, replay, freshness, the four check families and stage timings.",
+        "fixtures/<file> : the clean grain fixture and its copy carrying exactly one additional duplicate key.",
+        "delivery/<file> : a native database or reloadable export containing only the approved output model."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Requires the build to read the same source identities and row counts the profile measured, with retained rows plus disjoint named exclusions equal to the input rows.",
+        "Recomputes each measure's delta as observed minus the captured control and requires it within that measure's own unit and tolerance, in exact decimal arithmetic.",
+        "Requires the output grain check to report zero duplicate and zero null-key rows on the declared keys, with its query recorded.",
+        "Requires a repeated build to preserve the row count and every measured total.",
+        "Requires the duplicate-key fixture to yield exactly one excess duplicate under the same grain assertion, and the delivery to contain only the approved output model.",
+        "Requires the declared freshness contract, executing a late-arrival case only when a policy was declared and refusing an invented one.",
+        "Requires exactly four executed, passing check families with evidence, and measured stage times within the declared budget."
+      ],
+      "proves": [
+        "The approved models were built and executed against the full declared sources with a pinned toolchain.",
+        "Each delivered measure reproduces the control captured before the pipeline existed, within the owner's tolerance and in exact decimal arithmetic.",
+        "The finished table is unique and non-null at its declared grain, and a repeated build changed nothing."
+      ],
+      "doesNotProve": [
+        "That the output is business-correct: the control is the model's own computation, so both sides of the comparison are the model's numbers.",
+        "That the fixtures establish detection causally; they are model-authored additional controls and never primary evidence.",
+        "That the pipeline will keep working on new data, or that any freshness policy is installed anywhere."
+      ],
+      "requires": [
+        "data-pipeline-profile",
+        "data-pipeline-rules"
+      ],
+      "approvalAfter": "data-pipeline-rules"
+    },
+    {
+      "id": "prediction-metrics",
+      "title": "Recompute prediction metrics",
+      "summary": "Recomputes the declared primary metric from the submitted predictions with trusted host code, then binds the result to the threshold and comparator on row one of the declared success metric, to the identity of the scored file, and to the reported evaluation set. Leakage checks and their seeded control are reported by the harness and carried through into a host-written score report that records, explicitly, what custody the check does not establish.",
+      "description": "Produce predictions.csv with the exact header y_true,y_score and optional third column slice, one row per scored example. Binary labels are 0/1 with 1 positive; scores must be finite. Write eval-report.json with primaryMetric:{name,value,threshold,comparator,pass:true}, evalset:{sha256,rows}, and leakageChecks:[{id,pass:true,...}]. The primary metric is row ONE of the declared successMetric table, never a later metric. Retain its exact threshold and comparator (>=, >, <=, < or =); an explicit comparison direction is required; a bare numeric threshold is rejected. Accuracy and F1 need the declared operating point. Record the real evaluation-set SHA256 and exact prediction row count. If the owner names a holdout hash, it must match that holdout, not a development set. If a predictionsSha256 is reported, it must hash the actual predictions.csv.\nCreate checks.sh that executes the task's evaluation and requested checks using the supplied data and permissions. Run exactly sh checks.sh as a separate SDK command after every code edit, then only read and hand off. A successful exit means the evaluation and required checks completed. Do not replace declared data with synthetic fixtures; controlled variants are additional checks. Include at least one separately seeded post-label-feature leakage control with {id,pass:true,expectedTrip:true,tripped:true,evidence:string}; run the same leakage checks against that variant and keep it out of primary predictions. Every declared control must match its expected outcome, and every reported leakage check must pass. Name missing data, dependencies or failed checks instead of inventing results.\nThe host recomputes AUROC, PR-AUC (average precision), accuracy or F1 from submitted predictions, checks report agreement within 1e-6, and applies the declared comparison exactly without an epsilon. It observes the SDK command and pins artifacts; it never executes model-written programs as trusted host code. score-report.json is reserved for the host: do not create it. The host writes it only after acceptance. This check does not choose an algorithm or plan the workflow. It recomputes submitted labels and scores; it does not establish label/holdout custody, train/holdout isolation, split correctness or frozen-model provenance. Hash matching binds the report to a declared fingerprint, not the predictions to independent labels. Leakage-control fields remain harness-reported evidence requiring review. Preserve these limitations in the handoff and do not claim leakage protection or model provenance from this check alone.",
+      "produces": [
+        "predictions.csv : the exact header y_true,y_score with an optional slice column, one row per scored example, 0/1 labels with 1 positive, and finite scores.",
+        "eval-report.json : primaryMetric with name, value, threshold, comparator and pass; evalset sha256 and rows; and leakageChecks including a seeded control with expectedTrip and tripped.",
+        "checks.sh : runs the evaluation and requested checks; run exactly `sh checks.sh` as a separate SDK command after every edit.",
+        "score-report.json is reserved for the host and written by it; the step must not create that file."
+      ],
+      "recomputes": [
+        "Observes the exact `sh checks.sh` execution and rejects a program or output inventory that changed around it.",
+        "Rescores predictions.csv with trusted host code and rejects a reported value that disagrees with the recomputed one.",
+        "Recomputes the threshold comparison itself in exact decimal arithmetic using the declared comparator.",
+        "Requires the reported metric family, comparator and threshold to be exactly those declared on row one; a harness cannot set its own bar.",
+        "Re-hashes predictions.csv after scoring and rejects a file that changed, or a reported prediction identity that differs.",
+        "Requires the reported evaluation-set fingerprint to be a SHA-256 and to match a holdout hash the owner declared, when one was declared.",
+        "Requires every reported leakage check to have a distinct identity and pass, including a seeded control whose expectedTrip equals its tripped value.",
+        "Writes score-report.json itself, recording the binding and its explicit custody limitations."
+      ],
+      "proves": [
+        "The submitted predictions really do produce the reported metric value: the host recomputed it and compared it against the declared threshold.",
+        "The scored file is the file that was hashed, and the reported evaluation set matches the declared holdout when one was declared."
+      ],
+      "doesNotProve": [
+        "Label or holdout custody: nothing here establishes where y_true came from.",
+        "Train/holdout isolation, split correctness, or that a frozen model produced these scores.",
+        "That the leakage controls ran as described; they are reported by the harness and recorded as reported, not verified.",
+        "That the evaluated population is complete or representative: the rows scored are the rows submitted."
+      ],
+      "inputs": {
+        "required": [
+          "successMetric",
+          "dataDescription"
+        ],
+        "optional": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "title", "domain", "instruction", "doc", "tags", "confidence", "rationale", "evidence"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "kebab-case id naming the METHOD (e.g. \"competitive-teardown\"), never the run, its id, or its subject"
+    },
+    "title": {
+      "type": "string",
+      "description": "Short human name for the method (e.g. \"Competitive teardown\")"
+    },
+    "domain": {
+      "type": "string",
+      "description": "One-or-two word category the method belongs to (e.g. \"research\", \"ui-design\", \"data-migration\")"
+    },
+    "instruction": {
+      "type": "string",
+      "description": "The complete, standalone instruction a future agent receives when this skill is invoked. Written as durable method guidance for a DIFFERENT subject — no references to this run, its inputs, or its results."
+    },
+    "doc": {
+      "type": "string",
+      "description": "Fuller markdown reference for the method: steps, decision points, quality bar, and common failure modes. Loaded into the session as a context file when the skill is used."
+    },
+    "tags": {
+      "type": "array",
+      "description": "Lowercase retrieval tags for this method",
+      "items": { "type": "string" }
+    },
+    "confidence": {
+      "type": "number",
+      "description": "0..1 — how confident you are that this is a genuinely reusable method rather than a one-off description of this run"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "What in the run's nodes and gate verdicts evidences this method, and why it generalizes beyond this run's subject"
+    },
+    "evidence": {
+      "type": "array",
+      "description": "The 2-3 most load-bearing excerpts from the run — the lines that made you name this method. Each must be VERBATIM from the node shown, because a reader will open the node and check it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["runId", "nodeId", "quote"],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "description": "The sub-run id shown on that node, or \"\" when the node belongs to the run being extracted from"
+          },
+          "nodeId": {
+            "type": "string",
+            "description": "The node id this excerpt comes from, copied exactly from the run description"
+          },
+          "quote": {
+            "type": "string",
+            "description": "Verbatim excerpt from that node's output or log tail, at most 300 characters. No paraphrase."
+          }
+        }
+      }
+    }
+  }
+}

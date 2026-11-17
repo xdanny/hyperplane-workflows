@@ -1,0 +1,189 @@
+{
+  "id": "",
+  "name": "data-pipeline",
+  "description": "Build analytical tables from measured sources, approve the model plan, and check row accounting, finished-table keys and independently calculated totals before handover.",
+  "spec": {
+    "nodes": [
+      {
+        "inputs": {
+          "grain": "{slot:grain}",
+          "handover": "{slot:handover}",
+          "keyColumns": "{slot:keyColumns}",
+          "lateArrival": "{slot:lateArrival}",
+          "maxLag": "{slot:maxLag}",
+          "measures": "{slot:measures}",
+          "refreshDeadline": "{slot:refreshDeadline}",
+          "runtimeBudget": "{slot:runtimeBudget}",
+          "safeUse": "{slot:safeUse}",
+          "sources": "{slot:sources}",
+          "targetStore": "{slot:targetStore}"
+        },
+        "acceptance": "data-pipeline-profile",
+        "kind": "task",
+        "id": "profile",
+        "title": "Measure sources and independent controls",
+        "instruction": "Measure every declared source and each business measure directly from the raw data. Preserve confidentiality and distinguish source keys from derived finished-table keys. Follow the built-in SDK profiling contract; do not design or build the future pipeline yet."
+      },
+      {
+        "acceptance": "data-pipeline-rules",
+        "kind": "task",
+        "id": "rules",
+        "title": "Plan the analytical tables",
+        "instruction": "Plan the simplest useful typed models and name the finished outputModel from the measured sources and controls. A single model may read sources directly; add preparation or intermediate models only when useful. Preserve the declared final grain, keys, business definitions and individual tolerances. Explain confidentiality, repeated-build behavior, freshness and local publication boundaries. Follow the built-in SDK plan contract; do not implement before approval."
+      },
+      {
+        "kind": "check",
+        "id": "plan-review",
+        "title": "Review source evidence and model plan",
+        "instruction": "Independently inspect actual source profiling code and evidence. Every declared source must be read in full with access, schema, identity, row counts, null/distinct counts, candidate-key and timestamp evidence. Recalculate every declared business control independently of future model logic. Check exclusions, timezone, test rows and confidentiality. Reject fixture substitution, fabricated results, missing sources or unmeasurable controls; disclose missing timing metadata. A successful command and valid JSON alone do not establish correct measurements.\n\nIndependently inspect the proposed model dependencies, typed columns, grain, keys and measure map against the original context and measured sources. Every measured source must contribute through explicit, dependency-ordered models to the named outputModel. No layer taxonomy is required. The finished output must own the declared grain, and each measure must retain its business definition, exclusions, original control and owner tolerance. Check the requested engine is feasible, confidential fields cannot leak, repeated builds are stable, and lag, deadline and late-arrival requirements remain separate. Reject unresolved requirements that prevent implementation; do not invent optional policies."
+      },
+      {
+        "kind": "approval",
+        "id": "approve-plan",
+        "title": "Approve the model plan",
+        "instruction": "Review source-profile.json and pipeline-plan.json. Confirm the source snapshots, finished row definition and keys, all business measures and tolerances, confidentiality, freshness behavior, build plan and local deliverables before implementation."
+      },
+      {
+        "acceptance": "data-pipeline-audit",
+        "kind": "task",
+        "id": "audit",
+        "title": "Build and verify the tables",
+        "instruction": "Build the approved models against the full declared sources using the requested engine. Deliver SQL and a local database or reloadable export containing only the approved finished table. Execute source accounting, finished keys, independent measure controls, repeated-build and freshness checks, plus a copied duplicate-key negative case. Follow the built-in SDK build contract. Preserve original sources and honor any declared budget and late-arrival policy."
+      },
+      {
+        "kind": "document",
+        "id": "summary",
+        "title": "Explain the delivered tables and evidence",
+        "instruction": "Write standalone Markdown in the requested handover format. Lead with what was built and the owner's next action. Explain source rows, retained/excluded rows and final aggregated rows with their distinct denominators; list each business measure with its raw control, observed result, exact delta and owner tolerance. Include the negative case, repeated-build result, freshness evidence, local delivery links, confidentiality and actual toolchain. Explain how to rebuild and what external scheduling/publication remains. Preserve limitations and define jargon for a first-time reader. Prepare the handover without sending or publishing it."
+      },
+      {
+        "kind": "check",
+        "id": "delivery-review",
+        "title": "Review the tables and handover",
+        "instruction": "Independently inspect the actual SQL, check programs, output tables and measured evidence. Verify full original source identities, raw retained/excluded row accounting before aggregation, actual finished-table grain and non-null keys, and all original controls reproduced through a separate raw-source parse path. Recalculate exact deltas and each owner tolerance. Check that the same assertion accepts the clean fixture and rejects the injected duplicate, two full builds preserve all results, declared timing and late-row behavior were executed, and no unapproved working tables or sensitive fields appear in the delivered database/export. Reject hardcoded reports, fixture substitution, skipped checks or a substituted engine. Structural acceptance and a successful command are necessary but do not prove business logic.\n\nCheck the actual model logic and delivered table against every requested business definition, exclusion, row meaning, confidentiality limit and freshness policy. Explain any difference between source contributions and aggregated rows. Confirm the independent control was not derived from the same imported/model path. A correct-looking total does not excuse wrong period assignment or missing rows. State gaps and unresolved operational requirements; local files are not an externally deployed pipeline.\n\nIndependently compare the handover with the actual delivered files and measured reports. Its opening must state the result and next action, source and final counts must have correct denominators, all requested measures need their controls/deltas/tolerances, and all confidentiality, timing and external deployment limitations must survive. Reject unsupported claims or missing rebuild instructions. Return a clear one-sentence restatement of what was attempted, what happened and what the reader should do next."
+      }
+    ],
+    "id": "",
+    "name": "",
+    "kind": "nodes",
+    "instruction": "Build the declared analytical tables and deliver the SQL, a local database or reloadable export, and executed evidence.\nSources: {slot:sources}\nTarget engine and delivery: {slot:targetStore}\nWhat one finished row represents: {slot:grain}\nKey columns: {slot:keyColumns}\nBusiness measures and individual tolerances: {slot:measures}\nMaximum source lag: {slot:maxLag}\nConfidentiality and use limits: {slot:safeUse}\nExternal refresh deadline and trigger: {slot:refreshDeadline}\nLate-arrival policy: {slot:lateArrival}\nBuild and checks time limit: {slot:runtimeBudget}\nHandover format and intended reader: {slot:handover}\nBlank optional context is unspecified. Configure source access and temporary tools per step. Deliver local artifacts for the requested engine; this recipe does not deploy, publish, send messages or install an external schedule. Fail explicitly if the requested engine or full source cannot be used.",
+    "targetRoot": "",
+    "check": null,
+    "project": "",
+    "autoRepair": false,
+    "revision": 0,
+    "updatedAt": "0001-01-01T00:00:00Z"
+  },
+  "contextSlots": [
+    {
+      "id": "sources",
+      "label": "Sources",
+      "hint": "Every raw table or file, its absolute path or source reference, format and how new data arrives. Use credential references, never connection secrets.",
+      "required": true,
+      "example": "/data/orders.csv, CSV orders arriving daily",
+      "audience": "engineer"
+    },
+    {
+      "id": "targetStore",
+      "label": "Target store",
+      "hint": "The database engine and local database or reloadable export you need. This build delivers files for review; applying them to a shared warehouse is a separate action.",
+      "required": true,
+      "example": "SQLite database containing daily_sales under delivery/",
+      "audience": "engineer"
+    },
+    {
+      "id": "grain",
+      "label": "Grain",
+      "hint": "What one finished row represents. Key columns identify that row and are declared separately; grouping several source rows into one output row is allowed.",
+      "required": true,
+      "example": "one row per UTC order date",
+      "audience": "engineer"
+    },
+    {
+      "id": "keyColumns",
+      "label": "Key columns",
+      "hint": "Comma-separated finished-table columns identifying a row. These may be derived from source columns. If there is no natural key, write none followed by the closest candidate columns; the build must report whether they hold.",
+      "required": true,
+      "example": "order_day",
+      "type": "list",
+      "audience": "engineer"
+    },
+    {
+      "id": "measures",
+      "label": "Numbers the finished tables must reproduce",
+      "hint": "Define every business number and its excluded rows. Each number is compared with a control calculated from raw sources before the build. Blank difference fields mean exact equality; other units require an explicit nonnegative difference.",
+      "required": true,
+      "example": "[{\"measure\":\"net\",\"definition\":\"Sum order amounts excluding is_test=1\",\"unit\":\"exact\",\"tolerance\":\"0\"}]",
+      "type": "table",
+      "columns": [
+        {
+          "id": "measure",
+          "label": "Number to produce",
+          "required": true
+        },
+        {
+          "id": "definition",
+          "label": "Business definition",
+          "required": true
+        },
+        {
+          "id": "unit",
+          "label": "Allowed difference unit",
+          "options": [
+            "exact",
+            "absolute",
+            "count",
+            "percent_of_control"
+          ]
+        },
+        {
+          "id": "tolerance",
+          "label": "Allowed difference"
+        }
+      ]
+    },
+    {
+      "id": "maxLag",
+      "label": "How far behind the source the tables may fall",
+      "hint": "The maximum source lag, with its time unit. Keep the external finish deadline and late-arrival behavior in their separate optional fields.",
+      "required": true,
+      "example": "no more than 3 hours behind the source",
+      "audience": "engineer"
+    },
+    {
+      "id": "safeUse",
+      "label": "What is confidential here, and what these numbers must not be used for",
+      "hint": "Sensitive fields to exclude or mask, and decisions these numbers must not support. Only approved finished tables belong in the delivery.",
+      "required": true,
+      "example": "Customer email must not appear in delivered tables; internal revenue reporting only."
+    },
+    {
+      "id": "refreshDeadline",
+      "label": "When it must have landed, and what starts it",
+      "hint": "Optional finish time, timezone, external trigger and responsible owner. This workflow does not install a schedule or publish to that system.",
+      "example": "06:00 UTC; started by the external analytics_daily job; analytics-oncall owns failures",
+      "audience": "engineer"
+    },
+    {
+      "id": "lateArrival",
+      "label": "How late a row may arrive, and what it does to the period it belongs to",
+      "hint": "Optional lateness window and whether late data restates its original period or counts when it arrives. A declared policy requires an executed late-row scenario.",
+      "example": "Up to 7 days late; restate the original order date",
+      "audience": "engineer"
+    },
+    {
+      "id": "handover",
+      "label": "How the finished summary is handed over",
+      "hint": "Who receives the finished summary and in what form — for example 'a standalone Markdown explanation and the SQLite file for the analytics owner'. Name the recipient by a handle or a list name, never an email address: the platform keeps references to people, not ways of reaching them. If the project declares this, it arrives filled in; left blank, the summary is addressed to nobody in particular.",
+      "example": "a standalone Markdown explanation and the SQLite file for the analytics owner"
+    },
+    {
+      "id": "runtimeBudget",
+      "label": "Runtime budget",
+      "hint": "Optional time limit for the full build and checks. Generated checks must fail on overrun; they cannot sample sources or relax tolerances. The application also applies its own deadline.",
+      "example": "Full build and checks under 20 minutes"
+    }
+  ],
+  "criteria": null,
+  "createdAt": "0001-01-01T00:00:00Z"
+}

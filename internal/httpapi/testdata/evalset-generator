@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Deterministic model transport for practice-test generation tests.
+
+It answers the generator's prompt with a fixed pair of cases, so the endpoint's
+behavior — storage, conflict, replacement — is what the test measures, not a
+model's mood. It bills nothing and reaches no network.
+"""
+import json, sys
+args = sys.argv[1:]
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+assert args[args.index('--sandbox') + 1] == 'read-only'
+prompt = sys.stdin.read()
+assert 'evalset' in prompt.lower() or 'case' in prompt.lower()
+cases = [
+    {"input": {"request": "Summarize a 900-word memo in 120 words."},
+     "criteria": "Fails if the summary exceeds 120 words or drops the memo's decision.",
+     "checks": [{"kind": "text-nonempty"}]},
+    {"input": {"request": "Summarize a memo that states no decision."},
+     "criteria": "Fails if the answer invents a decision the memo does not contain.",
+     "checks": [{"kind": "text-nonempty"}]},
+]
+print(json.dumps({'type': 'thread.started', 'thread_id': 'evalset-fixture'}), flush=True)
+print(json.dumps({'type': 'item.completed',
+                  'item': {'id': 'reply', 'type': 'agent_message', 'text': json.dumps(cases)}}), flush=True)
+print(json.dumps({'type': 'turn.completed',
+                  'usage': {'input_tokens': 1, 'cached_input_tokens': 0, 'output_tokens': 1}}), flush=True)

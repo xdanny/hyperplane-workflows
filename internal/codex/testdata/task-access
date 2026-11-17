@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+"""Fixture model, real SDK transport. No native sandbox claim."""
+import json, os, pathlib, re, sys, time
+args=sys.argv[1:]
+prompt=sys.stdin.read()
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+assert '--sandbox' not in args
+assert not any('sandbox_workspace_write' in arg for arg in args)
+assert 'default_permissions="hyperplane-task"' in args
+assert 'allow_login_shell=false' in args
+permissions=next(arg for arg in args if arg.startswith('permissions='))
+assert '"example.com"="allow"' in permissions
+assert '":minimal"="read"' in permissions
+assert '"allow_upstream_proxy"=false' in permissions
+assert '"allow_local_binding"=false' in permissions
+proxy=next(arg for arg in args if arg.startswith('features.network_proxy='))
+assert '"enabled"=true' in proxy and '127.0.0.1:0' in proxy
+assert os.environ.get('WORKFLOW_PROBE')=='selected-canary'
+assert not any(k in os.environ for k in ['UNSELECTED_PROBE','DATABASE_URL','OPENAI_API_KEY','HTTP_PROXY','BASH_ENV'])
+runtime=re.search(r'"([^"\n]*hyperplane-sdk-tools-[^"\n]*)"="write"',permissions).group(1)
+assert pathlib.Path(runtime).is_dir()
+pathlib.Path(os.environ['SDK_FIXTURE_CALLS']).write_text(json.dumps({'runtime':runtime,'permissionTable':permissions,'arguments':args,'selectedPresent':True,'unselectedAbsent':True}))
+print(json.dumps({'type':'thread.started','thread_id':'fixture-access'}),flush=True)
+mode=os.environ.get('SDK_FIXTURE_MODE','ordinary')
+if mode=='hang': time.sleep(300)
+if mode=='transport': sys.exit(2)
+workspace=pathlib.Path(args[args.index('--cd')+1])
+(workspace/'answer.txt').write_text('42')
+print(json.dumps({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':'Created answer.txt'}}))
+print(json.dumps({'type':'turn.completed','usage':{'input_tokens':11,'cached_input_tokens':2,'output_tokens':3}}))

@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""Deterministic model executable; application HTTP, SDK transport and persistence are real."""
+import csv
+import re
+import json
+import os
+import pathlib
+import sys
+
+args = sys.argv[1:]
+assert args[0] == 'exec' and '--ignore-user-config' in args and '--ignore-rules' in args
+sandbox = args[args.index('--sandbox') + 1] if '--sandbox' in args else None
+workspace = pathlib.Path(args[args.index('--cd') + 1])
+prompt = sys.stdin.read()
+receipt = {}
+if 'Summarize the connected sales source' in prompt:
+    assert sandbox is None and 'default_permissions="hyperplane-task"' in args
+    assert 'allow_login_shell=false' in args
+    permissions = next(arg for arg in args if arg.startswith('permissions='))
+    source = pathlib.Path(os.environ['SDK_FIXTURE_BROWSER_SOURCE']).resolve()
+    assert json.dumps(str(source)) + '="read"' in permissions
+    assert '"source.example.invalid"="allow"' in permissions
+    assert '"allow_upstream_proxy"=false' in permissions and '"allow_local_binding"=false' in permissions
+    value = os.environ['WORKFLOW_BROWSER_SOURCE_TOKEN']
+    assert value and value not in prompt and value not in ' '.join(args)
+    assert 'WORKFLOW_BROWSER_SOURCE_TOKEN' in prompt
+    assert not any(key in os.environ for key in ['WORKFLOW_BROWSER_UNSELECTED', 'DATABASE_URL', 'HTTP_PROXY', 'BASH_ENV'])
+    rows = list(csv.DictReader(source.open()))
+    result = {'rows': len(rows), 'total': sum(int(row['amount']) for row in rows)}
+    (workspace / 'summary.json').write_text(json.dumps(result))
+    kind = 'connected-task'
+    text = 'Read the declared CSV and created summary.json with the row count and amount total. No independent check was requested.'
+    runtime = re.search(r'"([^"\n]*hyperplane-sdk-tools-[^"\n]*)"="write"', permissions).group(1)
+    receipt = {'selectedPresent': True, 'unselectedAbsent': True, 'sourceRead': True, 'runtime': runtime}
+elif 'Propose a complete SDK workflow' in prompt:
+    assert 'Plan a simple weekend cycling guide' in prompt
+    assert sandbox == 'read-only' and '--output-schema' in args
+    assert list(workspace.iterdir()) == []
+    kind = 'plan'
+    text = json.dumps({'name': 'Proposed cycling guide', 'recipe': '', 'slots': [], 'unsupported': [], 'nodes': [
+        {'id': 'plan', 'title': 'Plan', 'kind': 'document', 'instruction': 'Write the planning document'},
+        {'id': 'create-guide', 'title': 'Create guide', 'kind': 'task', 'instruction': 'Create the cycling guide file'},
+    ]})
+elif '--output-schema' in args:
+    assert sandbox == 'read-only'
+    assert 'Independently review the prior documents' in prompt
+    assert any('Cycling guide fixture' in p.read_text() for p in workspace.glob('*/guide.txt'))
+    kind = 'review'
+    text = json.dumps({'passed': True, 'findings': ['Deterministic fixture review; this does not establish factual correctness.'],
+                      'restatement': 'The fixture created a cycling guide file and a planning document. A person must review the outputs before using them.'})
+elif sandbox == 'workspace-write':
+    assert 'sandbox_workspace_write.network_access=false' in args
+    assert 'Create the cycling guide file' in prompt
+    assert any('Planning document fixture' in p.read_text() for p in workspace.parent.glob('*.md'))
+    kind = 'task'
+    (workspace / 'guide.txt').write_text('Cycling guide fixture\nBring water, inspect the route, and choose a comfortable distance.\nFixture content; review conditions before riding.\n')
+    text = '# Cycling guide\nCreated guide.txt. No extra acceptance check was requested.'
+else:
+    assert sandbox == 'read-only' and 'Write the planning document' in prompt
+    kind = 'document'
+    text = '# Planning document fixture\nPlan the route, check the weather, and include rest stops.\nThis deterministic fixture tests the workflow, not the quality of cycling advice.'
+with open(os.environ['SDK_FIXTURE_BROWSER_CALLS'], 'a') as calls:
+    calls.write(json.dumps({'kind': kind, 'workspace': str(workspace), **receipt}) + '\n')
+print(json.dumps({'type': 'thread.started', 'thread_id': 'browser-fixture-' + kind}), flush=True)
+print(json.dumps({'type': 'item.completed', 'item': {'id': 'answer', 'type': 'agent_message', 'text': text}}))
+print(json.dumps({'type': 'turn.completed', 'usage': {'input_tokens': 17, 'cached_input_tokens': 3, 'output_tokens': 2}}))

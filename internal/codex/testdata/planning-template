@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Fixture output through the official SDK; never a research-quality claim."""
+import json, os, pathlib, sys
+
+args = sys.argv[1:]
+assert args[0] == 'exec' and '--ignore-user-config' in args and '--ignore-rules' in args
+assert args[args.index('--sandbox') + 1] == 'read-only'
+workspace = pathlib.Path(args[args.index('--cd') + 1])
+workflow = json.loads(pathlib.Path(os.environ['SDK_FIXTURE_DEFINITION']).read_text())
+calls_path = pathlib.Path(os.environ['SDK_FIXTURE_CALLS'])
+calls = [json.loads(line) for line in calls_path.read_text().splitlines()] if calls_path.exists() else []
+index = len(calls)
+node = workflow['nodes'][index]
+kind = node.get('kind', 'document')
+prompt = sys.stdin.read()
+assert workflow['instruction'] in prompt and node['instruction'] in prompt
+for prior in workflow['nodes'][:index]:
+    assert (workspace / (prior['id'] + '.md')).is_file(), prior['id']
+assert ('--output-schema' in args) == (kind == 'check')
+web = 'web_search="live"' in args
+assert web == (kind == 'research' or (kind == 'check' and any(n.get('kind') == 'research' for n in workflow['nodes'][:index])))
+assert 'sandbox_workspace_write.network_access=true' not in args
+if kind == 'document':
+    previous_writer = next((call for call in calls if call['kind'] == 'document'), None)
+    if previous_writer:
+        assert args[args.index('resume') + 1] == previous_writer['threadId']
+        thread = previous_writer['threadId']
+    else:
+        assert 'resume' not in args
+        thread = 'fixture-writer'
+else:
+    assert 'resume' not in args
+    thread = 'fixture-' + node['id']
+with calls_path.open('a') as f:
+    f.write(json.dumps({'id':node['id'], 'kind':kind, 'threadId':thread, 'web':web}) + '\n')
+print(json.dumps({'type':'thread.started', 'thread_id':thread}))
+if web:
+    print(json.dumps({'type':'item.completed','item':{'id':'search','type':'web_search','query':'fixture source'}}))
+text = '# ' + node['title'] + '\n\nFixture document: https://example.com/evidence. Not real research.'
+if kind == 'check':
+    text = json.dumps({'passed':os.environ.get('SDK_FIXTURE_MODE') != 'reject',
+                      'findings':['Fixture-only verdict; no real sources were assessed.'],
+                      'restatement':'The fixture tested this workflow; review actual sources separately.'})
+print(json.dumps({'type':'item.completed', 'item':{'id':'answer','type':'agent_message','text':text}}))
+print(json.dumps({'type':'turn.completed','usage':{'input_tokens':17,'cached_input_tokens':3,'output_tokens':2}}))

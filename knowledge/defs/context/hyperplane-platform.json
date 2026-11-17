@@ -1,0 +1,32 @@
+{
+  "id": "hyperplane-platform",
+  "name": "Hyperplane Platform",
+  "description": "Current backend architecture, repository working rules, runtime guarantees and remaining SDK migration work. Optional context for reviewing or changing Hyperplane.",
+  "items": [
+    {
+      "type": "file",
+      "path": "DESIGN.md",
+      "why": "shared SDK runtime and the server-side Go API and Node worker responsibilities"
+    },
+    {
+      "type": "file",
+      "path": "docs/evidence/README.md",
+      "why": "local test commands and verification scope"
+    },
+    {
+      "type": "file",
+      "path": "docs/runtime.md",
+      "why": "implemented permissions, workflow execution, persistence and recovery limits"
+    },
+    {
+      "type": "file",
+      "path": "docs/sdk-migration.md",
+      "why": "remaining work, separated from current capabilities"
+    },
+    {
+      "type": "file",
+      "path": "docs/knowledge-layer.md",
+      "why": "optional catalog, project context and explicit knowledge export behavior"
+    }
+  ]
+}

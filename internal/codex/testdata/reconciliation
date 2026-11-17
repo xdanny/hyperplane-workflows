@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""Fixture model with real SDK transport and real deterministic measurements."""
+import json,os,pathlib,sys,subprocess
+args=sys.argv[1:];prompt=sys.stdin.read();workspace=pathlib.Path(args[args.index('--cd')+1])
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+connected='default_permissions="hyperplane-task"' in args
+if connected:assert '--sandbox' not in args
+stage=workspace.name if connected or args[args.index('--sandbox')+1]=='workspace-write' else ('review' if '--output-schema' in args else 'summary')
+with open(os.environ['SDK_FIXTURE_CALLS'],'a') as f:f.write(stage+'\n')
+mode=os.environ.get('SDK_FIXTURE_MODE','pass')
+def emit(x):print(json.dumps(x),flush=True)
+emit({'type':'thread.started','thread_id':'reconciliation-'+stage})
+if stage in ['profile','rules','audit']:
+ (workspace/'measure.py').write_text((pathlib.Path(__file__).resolve().parents[3]/'packages/agents/test/fixtures/reconciliation-program.py').read_text())
+ (workspace/'checks.sh').write_text('set -eu\npython3 measure.py\n')
+ command="/bin/sh -c 'sh checks.sh'" if connected else "sh checks.sh"
+ if not(mode=='no-execution' and stage=='audit'):emit({'type':'item.started','item':{'id':'measure','type':'command_execution','command':command,'exit_code':None,'status':'in_progress'}})
+ result=subprocess.run(['sh','checks.sh'],cwd=workspace,capture_output=True,text=True)
+ if not(mode=='no-execution' and stage=='audit'):emit({'type':'item.completed','item':{'id':'measure','type':'command_execution','command':command,'exit_code':result.returncode,'status':'completed','aggregated_output':result.stdout+result.stderr}})
+ text='Measured the declared source data and equations.'
+elif stage=='review':text=json.dumps({'passed':mode!='review-reject','findings':['Fixture reviewer rejected the findings'] if mode=='review-reject' else [],'restatement':'The reconciliation measured both sources, located segment gaps and detected both injected changes.'})
+else:text='# Reconciliation\nThe unexplained total is ten units; both segments exceed their two-unit tolerance. Both control operations detected their injected changes. Investigate the source definitions before relying on the dashboard.'
+emit({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':text}})
+emit({'type':'turn.completed','usage':{'input_tokens':11,'cached_input_tokens':2,'output_tokens':3}})

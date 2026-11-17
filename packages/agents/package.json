@@ -1,0 +1,27 @@
+{
+  "name": "@hyperplane/agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./ideator": "./src/workflows/ideator.mjs",
+    "./task": "./src/workflows/task.mjs",
+    "./nodes": "./src/workflows/nodes.mjs",
+    "./ml-scoring": "./src/workflows/ml-scoring.mjs",
+    "./checks": "./src/workflows/checks.mjs",
+    "./runtime": "./src/runtime.mjs",
+    "./validation": "./src/validation.mjs",
+    "./continuation": "./src/continuation.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@openai/codex-sdk": "0.153.4"
+  }
+}

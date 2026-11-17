@@ -1,0 +1,15 @@
+.workflow-inputs { margin-block: var(--s5); }
+.workflow-inputs-intro h2 { margin: 0; font-size: var(--t-h2); }
+.workflow-inputs-intro p { max-width: 76ch; line-height: 1.5; color: var(--ink-2); font-size: var(--t-sm); }
+.workflow-input-list { list-style: none; padding: 0; margin: 0 0 var(--s4); display: grid; gap: var(--s4); }
+.workflow-input-list > li { border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--paper-2); padding: var(--s4); }
+.workflow-input-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--s3); }
+@media (max-width: 640px) { .workflow-input-row { grid-template-columns: minmax(0, 1fr); } }
+.workflow-input-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s3); margin-top: var(--s3); }
+.workflow-input-required { display: flex; align-items: center; gap: var(--s2); font-size: var(--t-sm); }
+.workflow-token { background: var(--paper-3); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 0 var(--s1); font-size: var(--t-xs); white-space: nowrap; }
+.workflow-run-inputs { border: 1px solid var(--line-2); border-radius: var(--r-md); background: var(--paper-2); padding: var(--s4); margin-block: var(--s4); display: grid; gap: var(--s2); }
+.workflow-run-inputs h2 { margin: 0; font-size: var(--t-h3, var(--t-h2)); }
+.workflow-run-inputs .sdk-field-hint { margin-top: 0; }
+.workflow-run-inputs-actions { display: flex; flex-wrap: wrap; gap: var(--s3); margin-top: var(--s3); }
+.workflow-uses-inputs { color: var(--ink-2); font-size: var(--t-xs); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); }

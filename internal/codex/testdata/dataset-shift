@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Fixture model with real SDK transport and real deterministic measurements."""
+import json,os,pathlib,sys,subprocess
+args=sys.argv[1:];prompt=sys.stdin.read();workspace=pathlib.Path(args[args.index('--cd')+1])
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+connected='default_permissions="hyperplane-task"' in args
+if connected:assert '--sandbox' not in args
+stage=workspace.name if connected or args[args.index('--sandbox')+1]=='workspace-write' else ('review' if '--output-schema' in args else 'summary')
+with open(os.environ['SDK_FIXTURE_CALLS'],'a') as f:f.write(stage+'\n')
+mode=os.environ.get('SDK_FIXTURE_MODE','pass')
+def emit(x):print(json.dumps(x),flush=True)
+emit({'type':'thread.started','thread_id':'shift-'+stage})
+if stage in ['profile','audit']:
+ (workspace/'measure.py').write_text((pathlib.Path(__file__).resolve().parents[3]/'packages/agents/test/fixtures/shift-program.py').read_text())
+ (workspace/'checks.sh').write_text('set -eu\npython3 measure.py\n')
+ command="/bin/sh -c 'sh checks.sh'" if connected else "sh checks.sh"
+ if not(mode=='no-execution' and stage=='audit'):emit({'type':'item.started','item':{'id':'measure','type':'command_execution','command':command,'exit_code':None,'status':'in_progress'}})
+ result=subprocess.run(['sh','checks.sh'],cwd=workspace,capture_output=True,text=True)
+ if not(mode=='no-execution' and stage=='audit'):emit({'type':'item.completed','item':{'id':'measure','type':'command_execution','command':command,'exit_code':result.returncode,'status':'completed','aggregated_output':result.stdout+result.stderr}})
+ text='Measured the declared windows.'
+elif stage=='rules':
+ rules=[{'id':'category','feature':'category','statistic':'category-emergence','severity':'major','tolerance':{'value':2,'unit':'points_of_share','source':'Owner row'},'toleranceOrigin':'declared'},{'id':'volume','feature':'volume','statistic':'volume-drift','severity':'minor','tolerance':{'value':20,'unit':'percent_of_baseline','source':'Proposed for review'},'toleranceOrigin':'proposed'}]
+ if mode in ['categorical-psi','numeric-psi','psi-extras']:
+  rules[0].update(statistic='psi',tolerance={'value':0.2,'unit':'psi','source':'Owner row'})
+  if mode!='psi-extras':rules=rules[:1]
+  else:rules.append({'id':'emergence','feature':'category','statistic':'category-emergence','severity':'minor','tolerance':{'value':2,'unit':'points_of_share','source':'Proposed for review'},'toleranceOrigin':'proposed'})
+ for r in rules:r.update(rule='Measure movement',binning='Shared bins',why='Report decisions',expressible=True,expectedToTrip=r['id']!='volume',profileEvidence='Observed counts')
+ if mode=='wrong-tolerance':rules[0]['tolerance']['value']=3
+ (workspace/'shift-rules.json').write_text(json.dumps({'rules':rules,'unexpressible':[]}))
+ text='Rules preserve declared thresholds and label additional proposals.'
+elif stage=='review':text=json.dumps({'passed':mode!='review-reject','findings':['Fixture reviewer rejected the findings'] if mode=='review-reject' else [],'restatement':'The comparison measured two windows, detected a new category and checked the fixed control.'})
+else:text='# Comparison\nThe new category exceeds its declared tolerance. Volume is stable. The fixed control tripped as expected; review the source change before relying on the report.'
+emit({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':text}})
+emit({'type':'turn.completed','usage':{'input_tokens':11,'cached_input_tokens':2,'output_tokens':3}})

@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""Deterministic model transport; uses the official SDK and real API/storage."""
+import json
+import os
+import sys
+import time
+args = sys.argv[1:]
+assert args[0] == 'exec'
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+assert args[args.index('--sandbox')+1] == 'read-only'
+prompt = sys.stdin.read()
+with open(os.environ['SDK_TICKET_CALLS'], 'a') as out:
+    out.write(json.dumps({'prompt': prompt, 'cwd': args[args.index('--cd')+1]})+'\n')
+mode = os.environ.get('SDK_TICKET_MODE', 'ordinary')
+if mode == 'transport':
+    sys.exit(7)
+if mode == 'hang':
+    time.sleep(300)
+text = 'invalid response' if mode == 'malformed' else json.dumps([
+    {'key':'measure','title':'Measure source','detail':'Read the supplied sales CSV and report totals. Acceptance: reconcile totals against the source.','priority':3,'deps':[]},
+    {'key':'report','title':'Write report','detail':'Document the sales totals and limitations. Acceptance: review calculations and source references.','priority':2,'deps':['measure']}
+])
+print(json.dumps({'type':'thread.started','thread_id':'fixture-ticket-plan'}), flush=True)
+print(json.dumps({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':text}}), flush=True)
+print(json.dumps({'type':'turn.completed','usage':{'input_tokens':10,'cached_input_tokens':0,'output_tokens':10}}), flush=True)

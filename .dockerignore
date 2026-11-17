@@ -1,0 +1,17 @@
+# Keep build context small + reproducible for the api/web image builds.
+.git
+runs/
+**/node_modules
+apps/web/dist
+apps/web/test-results
+apps/web/playwright-report
+apps/web/*.tsbuildinfo
+*.log
+.DS_Store
+.env
+.env.*
+backups/
+experiments/
+ios-app*/
+
+workspace/

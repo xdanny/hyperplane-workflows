@@ -1,0 +1,103 @@
+[
+  {
+    "id": "trip-planning",
+    "category": "planning",
+    "title": "Plan a Trip",
+    "brief": "I want to plan a 7-day trip to Europe with a budget of €2000 per person. Research 3 destination options, compare them on cost and experience, and produce a day-by-day itinerary for the best option with a booking checklist.",
+    "recipe": "trip-planning"
+  },
+  {
+    "id": "deep-research",
+    "category": "research",
+    "title": "Deep Research Report",
+    "brief": "Research a topic deeply from multiple competing angles — empiricist, practitioner, sceptic, and systems-thinker — then synthesize into a cited report that honestly represents what is settled, what is contested, and what remains unresolved. Topic: [replace with your question]",
+    "recipe": "deep-research"
+  },
+  {
+    "id": "interview-prep",
+    "category": "planning",
+    "title": "Prepare for a Job Interview",
+    "brief": "Prepare for my interview using the actual company, role and job posting, and my factual background with four real examples. Research the company and role, draft tailored questions and STAR stories from those facts, and independently check specificity and evidence. Mark missing experience instead of inventing it.",
+    "recipe": "interview-prep"
+  },
+  {
+    "id": "finance-review",
+    "category": "decision",
+    "title": "Monthly Finance Review",
+    "brief": "Review my personal finances for the last 3 months. Categorize spending across housing, food, transport, subscriptions, and discretionary. Surface anomalies and non-obvious insights. Produce an action plan prioritized by estimated monthly saving, aligned to my goals: reduce discretionary spending and build an emergency fund.",
+    "recipe": "finance-review"
+  },
+  {
+    "id": "code-review",
+    "category": "automation",
+    "title": "Code Review a PR",
+    "brief": "Fetch the git diff for the current branch, review the changes for correctness and style, gate on quality, and request human approval before the review is acted on.",
+    "recipe": "code-review"
+  },
+  {
+    "id": "app-ideas",
+    "category": "ideation",
+    "title": "Invent App Ideas",
+    "brief": "Invent 5 genuinely novel mobile app concepts in a domain I care about: [replace with your domain]. Research real, evidence-backed problems people have (cite sources), then for each concept name a DISTINCTIVE mechanism (not just 'an app for X'), a killer differentiator competitors structurally lack, an offline-first core, and a monetization model. Judge and rank them on originality + feasibility + broad appeal, present the candidates as a comparable card grid for me to pick the winner, and record the chosen concept as a decision record."
+  },
+  {
+    "id": "decision-record",
+    "category": "decision",
+    "title": "Make & Record a Decision (ADR)",
+    "brief": "Help me make a decision: [replace with the decision to make, e.g. 'which database for the new service']. Research the realistic options, compare them on the criteria that matter (cost, fit, risk, operability), recommend one with clear reasoning, then RECORD the outcome as an ADR-style decision record in the knowledge base (context, decision, why, alternatives, consequences) so it's searchable and shows up in the knowledge graph."
+  },
+  {
+    "id": "competitive-teardown",
+    "category": "research",
+    "title": "Competitive Teardown",
+    "brief": "Do a competitive teardown of a product or market: [replace with product/market]. Identify the top competitors, map their positioning, pricing, core features, and the jobs-to-be-done they win and lose, surface non-obvious gaps and a credible wedge, and produce a cited brief with a comparison table and a recommended angle of attack."
+  },
+  {
+    "id": "data-pipeline",
+    "category": "automation",
+    "title": "Build & Verify a Data Pipeline",
+    "brief": "Fill every line before composing — or use the data-pipeline recipe below, which asks for the same things as separate fields.\n\nWhat I want: turn my raw sources into finished tables I can report from, with proof that every source row is accounted for.\nThe data: [replace with each source table or file, where it lives, its format, and how often new data arrives]\nWhat I already know: [replace with what one row of the finished table stands for, and the columns that identify it]\nClose enough means: [replace with every number the tables must produce and how the business defines it, plus how far behind the source they may fall and what happens when a row arrives late]\nDo not: [replace with anything this must not do — sensitive columns, systems it must not write to]",
+    "recipe": "data-pipeline"
+  },
+  {
+    "id": "ml-baseline",
+    "category": "automation",
+    "title": "Frame & Baseline an ML Task",
+    "brief": "Fill every line before composing — or use the ml-engineering recipe below, which asks for the same things as separate fields.\n\nWhat I want: build a model against a number I set before seeing any result, and tell me honestly where it works and where it stops working.\nThe data: [replace with the training data: where it lives, the period it covers, its size]\nWhat I already know: [replace with exactly what is predicted, and the moment the true answer becomes known — anything known only after that moment must not be an input]\nClose enough means: [replace with the score the model must beat, and the simplest predictors it must beat to be worth anything]\nDo not: [replace with sensitive columns and what the model must not be used to decide]",
+    "recipe": "ml-engineering"
+  },
+  {
+    "id": "pipeline-change",
+    "category": "automation",
+    "title": "Change an Existing Pipeline Safely",
+    "brief": "Fill every line before composing — or use the pipeline-change recipe below, which asks for the same things as separate fields.\n\nWhat I want: change an existing pipeline without breaking anything downstream, and prove nothing else moved.\nThe data: [replace with the pipeline: where its code lives, how it is run, and where its output lands]\nWhat I already know: [replace with the behaviour that is wrong or missing today, and what must be true afterwards]\nClose enough means: [replace with what must NOT change: each number or property, and how far it may move before that counts as a break]\nDo not: [replace with sensitive columns and anything the change must not touch]",
+    "recipe": "pipeline-change"
+  },
+  {
+    "id": "data-quality-audit",
+    "category": "automation",
+    "title": "Audit Data Quality & Score It",
+    "brief": "Fill every line before composing — or use the data-quality-audit recipe below, which asks for the same things as separate fields.\n\nWhat I want: find out what is actually true about this data, and score it against rules I approve first.\nThe data: [replace with the files or tables, where they live, rough size, and how often they refresh]\nWhat I already know: [replace with what you believe is true — completeness, ranges, uniqueness, relationships, freshness — and what one row means plus the columns that should identify it]\nClose enough means: [replace with the thresholds a rule has to clear to count as passing, set from the data rather than tuned to pass]\nDo not: [replace with which columns are sensitive, how they may appear in the scorecard, and what the findings must not be used for]",
+    "recipe": "data-quality-audit"
+  },
+  {
+    "id": "dataset-shift-audit",
+    "category": "automation",
+    "title": "Audit Two Windows for Dataset Shift",
+    "brief": "Fill every line before composing — or use the dataset-shift-audit recipe below, which asks for the same things as separate fields.\n\nWhat I want: tell me whether this data still looks like the data my model or report was built on.\nThe data: [replace with the baseline window and the current window: where each lives, the period it covers, and why the baseline is the right reference]\nWhat I already know: [replace with the columns that matter, each with what breaks downstream when it moves]\nClose enough means: [replace with your tolerances, set BEFORE anything is measured — how much movement is too much, per feature or as a default, and what counts as a new category]\nDo not: [replace with which columns are sensitive and how they may appear in a histogram or example]",
+    "recipe": "dataset-shift-audit"
+  },
+  {
+    "id": "dashboard-reconciliation",
+    "category": "automation",
+    "title": "Reconcile Two Dashboards That Disagree",
+    "brief": "Fill every line before composing — or use the dashboard-reconciliation recipe below, which asks for the same things as separate fields.\n\nWhat I want: find out why two dashboards disagree, and give me the number I can defend.\nThe data: [replace with what feeds each dashboard: the table, file or export behind it, and how it is read — \"the finance dashboard\" is not a source]\nWhat I already know: [replace with the differences you already know about, and what one row means once both sides are rolled up to the same level]\nClose enough means: [replace with the numbers that must match, what each means on each side, and how close counts as agreement]\nDo not: [replace with sensitive columns and what the reconciliation must not be used for]",
+    "recipe": "dashboard-reconciliation"
+  },
+  {
+    "id": "weekly-review",
+    "category": "decision",
+    "title": "Weekly Review & Plan",
+    "brief": "Run my weekly review: given what I did and what's outstanding ([replace with notes/links]), categorize progress, surface what slipped and why, identify the few highest-leverage things for next week, and produce a prioritized plan with a short rationale per item. Flag anything that needs a decision and record those as decision records."
+  }
+]

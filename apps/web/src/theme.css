@@ -1,0 +1,219 @@
+/* ============================================================================
+   Hyperplane — design system
+   Register: minimal-system (Linear/Vercel/Stripe-grade), engineering-paper.
+   Grounded in the subject: a precise workflow/DAG instrument. Monochrome chrome;
+   colour is reserved exclusively for run STATE (data). Machine values are mono.
+   ========================================================================== */
+
+:root {
+  /* ---- Surface (warm engineering paper) ------------------------------------ */
+  --paper:      #fbfbf9;   /* canvas */
+  --paper-2:    #ffffff;   /* raised panel */
+  --paper-3:    #f3f3ef;   /* sunken / hover */
+  --ink:        #14151a;   /* primary text + chrome accent */
+  --ink-2:      #595e67;   /* secondary text */
+  --ink-3:      #9a9ea6;   /* muted / captions */
+  --line:       rgba(20, 21, 26, 0.10);  /* hairline */
+  --line-2:     rgba(20, 21, 26, 0.16);  /* stronger hairline */
+  --grid:       rgba(20, 21, 26, 0.045); /* blueprint texture */
+
+  /* ---- State (the ONLY colour; confined to data) --------------------------- */
+  --st-live:    #1f5cff;   /* running */
+  --st-pass:    #137a4b;   /* passed */
+  --st-fail:    #c5392f;   /* failed */
+  --st-block:   #b06d0a;   /* blocked / awaiting */
+  --st-idle:    #9a9ea6;   /* pending / skipped */
+  --st-live-bg:  rgba(31, 92, 255, 0.10);
+  --st-pass-bg:  rgba(19, 122, 75, 0.10);
+  --st-fail-bg:  rgba(197, 57, 47, 0.10);
+  --st-block-bg: rgba(176, 109, 10, 0.12);
+  --st-idle-bg:  rgba(154, 158, 166, 0.14);
+
+  /* ---- Type ---------------------------------------------------------------- */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", monospace;
+
+  --t-display: 2.6rem;   /* hero metric / wordmark */
+  --t-h1:      1.5rem;
+  --t-h2:      1.0625rem;
+  --t-body:    0.875rem;
+  --t-sm:      0.8125rem;
+  --t-xs:      0.6875rem;  /* mono eyebrow */
+
+  /* ---- Space (constrained scale) ------------------------------------------- */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+
+  --r-sm: 4px; --r-md: 7px; --r-lg: 11px;
+
+  /* ---- Motion (defined once) ----------------------------------------------- */
+  --ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --dur:  130ms;
+
+  --shadow-1: 0 1px 2px rgba(20, 21, 26, 0.04), 0 1px 1px rgba(20, 21, 26, 0.03);
+  --shadow-2: 0 2px 8px rgba(20, 21, 26, 0.06), 0 1px 2px rgba(20, 21, 26, 0.04);
+
+  /* terminal / console — a dark surface for the orchestrator PTY. These literals
+     belong here (token-definition file); the xterm theme reads them at runtime. */
+  --term-bg:        #14151a;
+  --term-surface:   #1b1c22;
+  --term-surface-2: #2a2b33;
+  --term-surface-3: #34353f;
+  --term-fg:        #e9eaee;
+  --term-fg-dim:    #9a9ea6;
+  --term-fg-mute:   #595e67;
+  --term-white:     #ffffff;
+  --term-accent:    #1f5cff;
+  --term-accent-2:  #5b8bff;
+  --term-green:     #3fb950;
+  --term-green-2:   #56d364;
+  --term-red:       #f0564a;
+  --term-red-2:     #ff7b72;
+  --term-yellow:    #d29922;
+  --term-yellow-2:  #e3b341;
+  --term-sel:       rgba(31, 92, 255, 0.35);
+
+  /* knowledge-graph community palette (read at runtime by the graph renderer) */
+  --kg-0: #1f5cff;
+  --kg-1: #137a4b;
+  --kg-2: #b06d0a;
+  --kg-3: #7a3cc5;
+  --kg-4: #c5392f;
+  --kg-5: #0a8db0;
+  --kg-6: #b00a7a;
+  --kg-7: #5a6470;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--t-body);
+  line-height: 1.5;
+  color: var(--ink);
+  background-color: var(--paper);
+  /* Blueprint grid texture — felt, not seen (Vercel pattern, ~4.5% lines). */
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv05" 1, "ss01" 1;
+}
+
+/* ---- Type primitives ------------------------------------------------------- */
+.mono { font-family: var(--font-mono); font-feature-settings: "zero" 1; }
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.h1 { font-size: var(--t-h1); font-weight: 680; letter-spacing: -0.02em; margin: 0; }
+.h2 { font-size: var(--t-h2); font-weight: 620; letter-spacing: -0.01em; margin: 0; }
+
+.muted { color: var(--ink-2); }
+.faint { color: var(--ink-3); }
+
+a { color: inherit; text-decoration: none; }
+
+/* ---- Hairline -------------------------------------------------------------- */
+.hr { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+/* ---- Panel ----------------------------------------------------------------- */
+.panel {
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
+}
+
+/* ---- Buttons (six designed states) ---------------------------------------- */
+.btn {
+  font: 500 var(--t-sm)/1 var(--font-sans);
+  display: inline-flex; align-items: center; gap: var(--s2);
+  padding: 8px 13px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--paper-2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+.btn:hover { background: var(--paper-3); }
+.btn:active { transform: translateY(0.5px); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn--primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn--primary:hover { background: #000; }
+.btn--ghost { border-color: transparent; background: transparent; }
+.btn--ghost:hover { background: var(--paper-3); }
+.btn--sm { padding: 5px 9px; font-size: var(--t-xs); }
+
+/* ---- Inputs ---------------------------------------------------------------- */
+.input {
+  font: 400 var(--t-body)/1.2 var(--font-sans);
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--paper-2);
+  color: var(--ink);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.input::placeholder { color: var(--ink-3); }
+.input:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px var(--st-idle-bg); }
+
+/* ---- Focus rings (designed, keyboard-visible) ----------------------------- */
+:where(a, button, input, [tabindex]):focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* ---- State chip + dot ------------------------------------------------------ */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 500 var(--t-xs)/1 var(--font-mono);
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 4px 8px; border-radius: 999px;
+  white-space: nowrap;
+}
+.dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+
+.s-live  { color: var(--st-live);  background: var(--st-live-bg); }
+.s-pass  { color: var(--st-pass);  background: var(--st-pass-bg); }
+.s-fail  { color: var(--st-fail);  background: var(--st-fail-bg); }
+.s-block { color: var(--st-block); background: var(--st-block-bg); }
+.s-idle  { color: var(--st-idle);  background: var(--st-idle-bg); }
+
+.s-live  .dot { background: var(--st-live);  animation: pulse 1.4s var(--ease) infinite; }
+.s-pass  .dot { background: var(--st-pass); }
+.s-fail  .dot { background: var(--st-fail); }
+.s-block .dot { background: var(--st-block); }
+.s-idle  .dot { background: var(--st-idle); }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+/* ---- Designed empty state -------------------------------------------------- */
+.empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--s2); padding: var(--s7) var(--s4);
+  color: var(--ink-3); text-align: center;
+}
+.empty .mark { font-size: 20px; opacity: 0.5; }
+
+/* ---- Reduced motion -------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

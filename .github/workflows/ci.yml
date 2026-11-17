@@ -1,0 +1,98 @@
+name: ci
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: hyperplane_test
+          POSTGRES_PASSWORD: hyperplane_test
+          POSTGRES_DB: hyperplane_test_admin
+        ports:
+          - 15497:5432
+        options: >-
+          --health-cmd "pg_isready -U hyperplane_test"
+          --health-interval 3s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: ""
+      TEST_DATABASE_URL: postgres://hyperplane_test:hyperplane_test@127.0.0.1:15497/hyperplane_test_admin?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            packages/agents/package-lock.json
+            apps/web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Codex SDK
+        run: make sdk-install
+      - name: Quality gate (SDK, gofmt, vet, build, test)
+        run: make gate
+      - name: Install real browser journey dependencies
+        working-directory: apps/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Real API, PostgreSQL and SDK fixture browser journeys
+        env:
+          HYPERPLANE_BROWSER_JOURNEY: "1"
+          HYPERPLANE_BROWSER_ARTIFACTS: ${{ runner.temp }}/sdk-browser
+        run: go test ./internal/httpapi -run '^TestSDKBrowserJourney$' -count=1 -v
+      - name: Retain real browser receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-browser-receipts
+          path: ${{ runner.temp }}/sdk-browser
+          if-no-files-found: ignore
+          retention-days: 7
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install + build + unit tests
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build
+          npm run test:unit
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: API-fixture browser journeys with an owned production preview
+        env:
+          PLAYWRIGHT_OUTPUT_DIR: ${{ runner.temp }}/browser-fixtures
+        run: make gate-ux-e2e
+      - name: Retain API-fixture browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-fixture-artifacts
+          path: ${{ runner.temp }}/browser-fixtures
+          if-no-files-found: ignore
+          retention-days: 7

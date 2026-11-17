@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["whatItBuilds", "whatHappened", "trueOutcome", "nextSteps", "numbersUsed"],
+  "properties": {
+    "whatItBuilds": {
+      "type": "string",
+      "description": "What this workflow set out to build, in plain language, for a colleague who was not in the room. Name the thing produced and who it is for. No status here."
+    },
+    "whatHappened": {
+      "type": "string",
+      "description": "What actually happened, with the verdict in the FIRST sentence. Name the kind of thing every status word refers to — a run node-graph state, a criterion, a gate verdict, a human's delivery decision are four different things and must never be blurred into one 'passed'."
+    },
+    "trueOutcome": {
+      "type": "string",
+      "description": "What the reader actually got, stated at full strength. Every caveat, unproven criterion and failure survives here at its original weight; softening one is falsification. If the state document does not say, write 'not recorded'."
+    },
+    "nextSteps": {
+      "type": "string",
+      "description": "What to do next, ordered by consequence. 'Nothing — this is finished' is a valid answer when the state supports it. Never invent an action the state gives no grounds for."
+    },
+    "numbersUsed": {
+      "type": "array",
+      "description": "Every number that appears anywhere in the four parts above, each copied EXACTLY as the state document wrote it. The platform re-checks each one against the state; a number that is not there is flagged to the reader as unverified.",
+      "items": { "type": "string" }
+    }
+  }
+}

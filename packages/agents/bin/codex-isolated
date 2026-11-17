@@ -1,0 +1,23 @@
+#!/bin/sh
+# Preserve account authentication but make workflow policy independent of host
+# configuration and execpolicy rules. The SDK owns every other CLI argument.
+set -eu
+# Health checks the configured fixture/override without running arbitrary work.
+# Native package selection remains owned by the same official entry point below.
+if [ "$1" = --check-installation ]; then
+  if [ -n "${HYPERPLANE_CODEX_EXECUTABLE:-}" ]; then
+    resolved=$(command -v -- "$HYPERPLANE_CODEX_EXECUTABLE") || exit 1
+    [ -f "$resolved" ] && [ -x "$resolved" ]
+    exit $?
+  fi
+  exec node "$(dirname "$0")/../node_modules/@openai/codex/bin/codex.js" exec --version
+fi
+if [ "$1" != exec ]; then
+  echo 'Only Codex execution is supported by this launcher' >&2
+  exit 2
+fi
+shift
+if [ -n "${HYPERPLANE_CODEX_EXECUTABLE:-}" ]; then
+  exec "$HYPERPLANE_CODEX_EXECUTABLE" exec --ignore-user-config --ignore-rules "$@"
+fi
+exec node "$(dirname "$0")/../node_modules/@openai/codex/bin/codex.js" exec --ignore-user-config --ignore-rules "$@"

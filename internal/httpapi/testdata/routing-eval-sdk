@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+"""Only model output is simulated; the official SDK transport runs normally."""
+import json, os, sys
+args=sys.argv[1:]
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+assert args[args.index('--sandbox')+1]=='read-only'
+prompt=sys.stdin.read()
+judge='evaluation judge' in prompt
+with open(os.environ['SDK_FIXTURE_ROUTING_CALLS'],'a') as out: out.write(json.dumps({'kind':'judge' if judge else 'engine','prompt':prompt})+'\n')
+mode=os.environ.get('SDK_FIXTURE_ROUTING_MODE','ordinary')
+if mode=='engine-error' and not judge: sys.exit(7)
+text=json.dumps({'score':.9,'pass':True,'reasons':['Fixture scoring does not establish actual model quality.']}) if judge else json.dumps({'items':['measured']})
+if judge and mode=='judge-error': text='malformed scoring response'
+if mode=='quality-fail' or (mode=='local-quality-fail' and judge and 'local-failed-output' in prompt):text=json.dumps({'score':.1,'pass':False,'reasons':['Fixture criterion failed.']}) if judge else json.dumps({'items':['measured']})
+print(json.dumps({'type':'thread.started','thread_id':'routing-fixture'}),flush=True)
+print(json.dumps({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':text}}))
+print(json.dumps({'type':'turn.completed','usage':{'input_tokens':11,'cached_input_tokens':0,'output_tokens':3}}))

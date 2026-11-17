@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Model fixture. SDK transport and sandbox policy arguments are real;
+commands execute fixture programs. This is not live model/sandbox proof."""
+import json,os,pathlib,sys,subprocess
+args=sys.argv[1:];prompt=sys.stdin.read();workspace=pathlib.Path(args[args.index('--cd')+1])
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+assert 'web_search="disabled"' in args and 'sandbox_workspace_write.network_access=true' not in args
+connected='default_permissions="hyperplane-task"' in args
+if connected:
+ assert '--sandbox' not in args and not any('sandbox_workspace_write' in arg for arg in args)
+ assert os.environ.get('WORKFLOW_PROBE')=='selected-canary'
+command="/bin/sh -c 'sh checks.sh'" if connected else "/bin/sh -lc 'sh checks.sh'"
+stage=workspace.name if connected or args[args.index('--sandbox')+1]=='workspace-write' else ('review' if '--output-schema' in args else 'summary')
+with open(os.environ['SDK_FIXTURE_CALLS'],'a') as f:f.write(stage+'\n')
+mode=os.environ.get('SDK_FIXTURE_MODE','pass')
+def emit(x): print(json.dumps(x),flush=True)
+emit({'type':'thread.started','thread_id':'quality-'+stage})
+if stage in ['profile','audit']:
+ (workspace/'measure.py').write_text((pathlib.Path(__file__).resolve().parents[3]/'packages/agents/test/fixtures/quality-program.py').read_text())
+ (workspace/'checks.sh').write_text('set -eu\npython3 measure.py\n')
+ if mode!='no-execution' or stage!='audit':
+  emit({'type':'item.started','item':{'id':'measure','type':'command_execution','command':command,'status':'in_progress','exit_code':None}})
+  result=subprocess.run(['sh','checks.sh'],cwd=workspace,capture_output=True,text=True)
+  emit({'type':'item.completed','item':{'id':'measure','type':'command_execution','command':command,'status':'completed','exit_code':result.returncode,'aggregated_output':result.stdout+result.stderr}})
+ else: subprocess.run(['sh','checks.sh'],cwd=workspace,check=True,stdout=subprocess.DEVNULL)
+ text='Created the measured files and ran checks.sh.'
+elif stage=='rules':
+ rules=[]
+ for id,expectation,assertion,severity in [('unique-id','IDs are unique','duplicate id rows','major'),('present-id','IDs are unique','id is empty','major'),('nonnegative','Amounts are nonnegative','amount < 0','blocker')]:
+  rules.append({'id':id,'rule':expectation,'dimension':'validity','assertion':assertion,'scope':os.environ['SDK_FIXTURE_DATA'],'threshold':{'kind':'count','value':0,'justification':'Owner requires zero violations'},'severity':severity,'why':'Incorrect invoice totals','expressible':True,'derivedFrom':'expectation','expectedToFail':id!='present-id','profileEvidence':'Measured source rows','evidenceRequired':'id and amount columns','expectations':[expectation]})
+ if mode=='dropped-expectation':rules[-1]['expectations']=[]
+ (workspace/'quality-rules.json').write_text(json.dumps({'rules':rules,'unexpressible':[],'coverageNotes':'All owner expectations'}))
+ text='Prepared rules for review and approval.'
+elif stage=='review':
+ text=json.dumps({'passed':mode!='review-reject','findings':['Rejected by fixture reviewer'] if mode=='review-reject' else [],'restatement':'The fixture examined four source rows and reports violations without claiming the data is clean.'})
+else: text='# Audit findings\nTwo rules failed their approved threshold; all three rules executed. The data needs correction before its intended use.'
+emit({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':text}})
+emit({'type':'turn.completed','usage':{'input_tokens':11,'cached_input_tokens':2,'output_tokens':3}})

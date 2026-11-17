@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Fixture model only. Actual SDK, workflow checks and checkpoint protocol run."""
+import json
+import os
+import pathlib
+import sys
+import time
+
+args = sys.argv[1:]
+assert args[0] == 'exec' and '--ignore-user-config' in args and '--ignore-rules' in args
+assert args[args.index('--sandbox') + 1] == 'workspace-write'
+assert 'sandbox_workspace_write.network_access=false' in args
+workspace = pathlib.Path(args[args.index('--cd') + 1])
+assert workspace.name in ('OUTPUTS', 'workspace')
+prompt = sys.stdin.read()
+mode = os.environ.get('SDK_FIXTURE_MODE', 'recovery')
+resumed = 'resume' in args
+if resumed:
+    assert args[args.index('resume') + 1] == 'fixture-ideator-thread'
+    assert 'independent checks rejected' in prompt
+calls = os.environ.get('SDK_FIXTURE_CALLS')
+if calls:
+    with open(calls, 'a') as file:
+        file.write('resume\n' if resumed else 'start\n')
+print(json.dumps({'type': 'thread.started', 'thread_id': 'fixture-ideator-thread'}), flush=True)
+if mode == 'hang':
+    time.sleep(300)
+if mode == 'transport' or (mode == 'correction-transport' and resumed):
+    sys.exit(7)
+titles = ['Route notes', 'Repair kit', 'Ride planner']
+if mode != 'ordinary' and not resumed:
+    titles = titles[:1]
+ideas = [{'title': title, 'user': 'Weekend cyclist', 'problem': 'Forgets preparation before a ride',
+          'firstVersion': 'A short offline checklist with local storage'} for title in titles]
+(workspace / 'ideas.json').write_text(json.dumps({'ideas': ideas}))
+(workspace / 'brief.md').write_text('# Decision brief\n' + ', '.join(titles) +
+    ' are unvalidated hypotheses. Compare these ideas with weekend cyclists, starting with a small offline notebook experiment. Observe whether riders reuse the notebook before building any more features.')
+print(json.dumps({'type': 'item.completed', 'item': {'id': 'answer', 'type': 'agent_message', 'text': 'Artifacts written.'}}))
+print(json.dumps({'type': 'turn.completed', 'usage': {'input_tokens': 17, 'cached_input_tokens': 3, 'output_tokens': 2}}))

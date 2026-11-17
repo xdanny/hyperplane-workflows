@@ -1,0 +1,40 @@
+.workflow-node-details { background: var(--paper-2); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: var(--s5); margin-block: var(--s4); min-width: 0; overflow-wrap: anywhere; }
+.workflow-node-details:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.workflow-node-details header { padding-bottom: var(--s3); border-bottom: 1px solid var(--line); }
+.workflow-node-details h3 { font-size: var(--t-h2); line-height: 1.4; margin: var(--s2) 0; }
+.workflow-node-details h4 { font-size: var(--t-body); margin: var(--s5) 0 var(--s2); }
+.workflow-node-details h5 { font-size: var(--t-sm); margin: var(--s3) 0 var(--s2); }
+.workflow-node-details p, .workflow-node-details li, .workflow-node-details dd { line-height: 1.55; max-width: 76ch; }
+.workflow-node-details ul { padding-left: var(--s5); }
+.workflow-node-link { border: 0; padding: var(--s1) 0; background: none; color: var(--ink); font: inherit; text-align: left; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; }
+.workflow-node-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.workflow-node-details details { margin-block: var(--s3); }
+.workflow-node-details summary { cursor: pointer; font-weight: 600; line-height: 1.5; }
+.workflow-node-details pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.workflow-node-fulltext { white-space: pre-wrap; }
+.workflow-node-details dl { margin-block: var(--s3); }
+.workflow-node-details dt { font-weight: 600; margin-top: var(--s3); }
+.workflow-node-details dd { margin: var(--s1) 0 var(--s3); }
+.workflow-node-inputs dl { max-height: 360px; overflow: auto; padding-right: var(--s3); }
+.workflow-node-type { color: var(--ink-2); font-size: var(--t-sm); margin: 0; }
+.workflow-node-type > span { display: inline-block; font-size: var(--t-h2); min-width: 1.1em; font-weight: 600; }
+.workflow-node-evidence { list-style: none; padding: 0 !important; }
+.workflow-node-evidence > li { padding-block: var(--s3); border-bottom: 1px solid var(--line); }
+.workflow-node-evidence small { display: block; color: var(--ink-2); }
+@media (max-width: 640px) { .workflow-node-details { padding: var(--s4); } }
+
+/* ── Recorded searches (D-01) ───────────────────────────────────────────── */
+.workflow-node-searches { margin: var(--s2) 0 var(--s3); padding-left: var(--s5); }
+.workflow-node-searches > li { margin-bottom: var(--s2); }
+.workflow-node-search-urls { list-style: none; padding: 0 0 0 var(--s3); margin: var(--s1) 0 0; }
+.workflow-node-search-urls a { word-break: break-all; font-size: var(--t-xs); }
+
+/* ── Structured check contract (D-06) ───────────────────────────────────── */
+/* Four short lists in place of one 450-word paragraph. "What it does not
+   prove" is the one a reader most needs and least expects, so it is marked
+   rather than left as the last of four identical blocks. */
+.check-claims { display: grid; gap: var(--s3); margin: var(--s3) 0; }
+.check-claim > ul { margin: var(--s1) 0 0; padding-left: var(--s5); }
+.check-claim > ul > li { margin-bottom: var(--s1); }
+.check-claim-head { margin: 0; font-size: var(--t-sm); text-transform: uppercase; letter-spacing: .04em; color: var(--ink-2); }
+.check-claim--doesNotProve { border-left: 3px solid var(--line-2); padding-left: var(--s3); }

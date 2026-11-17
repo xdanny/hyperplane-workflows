@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Fixture author/reviewer on real SDK transport; real CSV/SQLite execution."""
+import json,os,pathlib,subprocess,sys
+args=sys.argv[1:]
+prompt=sys.stdin.read()
+workspace=pathlib.Path(args[args.index('--cd')+1])
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+connected='default_permissions="hyperplane-task"' in args
+if connected:assert '--sandbox' not in args
+stage=workspace.name if connected or args[args.index('--sandbox')+1]=='workspace-write' else ('review' if '--output-schema' in args else 'summary')
+mode=os.environ.get('SDK_FIXTURE_MODE','pass')
+with open(os.environ['SDK_FIXTURE_CALLS'],'a') as f:f.write(stage+'\n')
+def emit(value):print(json.dumps(value),flush=True)
+emit({'type':'thread.started','thread_id':'data-pipeline-'+stage})
+if stage in ['profile','rules','audit']:
+ if stage=='profile':
+  marker='Declared source inputs (use these exact values for this step): '
+  inputs=json.JSONDecoder().raw_decode(prompt.split(marker)[1])[0]
+ else:inputs=json.loads((workspace.parent/'profile/config.json').read_text())['inputs']
+ if connected:
+  assert os.environ['WORKFLOW_PROBE']=='selected-canary'
+  assert inputs['sources'] in prompt or stage=='audit'
+ (workspace/'config.json').write_text(json.dumps({'inputs':inputs,'rules':str(workspace.parent/'rules'),'layout':'direct' if mode=='direct-output' else 'multi-model'}))
+ fixture=pathlib.Path(__file__).resolve().parents[3]/'packages/agents/test/fixtures/data-pipeline.py'
+ (workspace/'fixture.py').write_text(fixture.read_text())
+ (workspace/'checks.sh').write_text('set -eu\npython3 fixture.py '+stage+' config.json\n')
+ command="/bin/sh -c 'sh checks.sh'" if connected else 'sh checks.sh'
+ observed=not(mode=='no-execution' and stage=='audit')
+ if observed:emit({'type':'item.started','item':{'id':'checks','type':'command_execution','command':command,'status':'in_progress','exit_code':None}})
+ result=subprocess.run(['sh','checks.sh'],cwd=workspace,capture_output=True,text=True)
+ filename={'profile':'source-profile.json','rules':'pipeline-plan.json','audit':'verification-report.json'}[stage]
+ report=workspace/filename
+ if report.exists():
+  d=json.loads(report.read_text())
+  if stage=='profile':
+   if mode=='partial-source':d['sources'][0]['scanned']='sample'
+   if mode=='missing-control':d['controls']=[]
+  if stage=='rules':
+   if mode=='missing-output':d.pop('outputModel')
+   if mode=='wrong-key':d['models'][-1]['keyColumns']=['id']
+  if stage=='audit':
+   if mode=='source-drift':d['sources'][0]['identity']='different-snapshot'
+   if mode=='wrong-counts':d['rowAccounting'][0]['retainedRows']=d['grainCheck']['rows']
+   if mode=='wrong-delta':d['measures'][0]['delta']='1'
+   if mode=='relaxed-tolerance':d['measures'][0]['tolerance']='1'
+   if mode=='negative-passes':d['negativeCase']['mutated']['duplicateRows']=0
+   if mode=='leaked-staging':d['publication']['tables'].append('stg_orders')
+   if mode=='replay-drift':d['replay']['rowsAfter']+=1
+  report.write_text(json.dumps(d))
+ if observed:emit({'type':'item.completed','item':{'id':'checks','type':'command_execution','command':command,'status':'completed','exit_code':result.returncode,'aggregated_output':result.stdout+result.stderr}})
+ text='Fixture author executed the source controls, approved plan or SQL build for this step.'
+elif stage=='review':
+ reject=mode=='review-reject' or (mode=='delivery-review-reject' and pathlib.Path(os.environ['SDK_FIXTURE_CALLS']).read_text().splitlines().count('review')==2)
+ text=json.dumps({'passed':not reject,'findings':['Fixture reviewer rejected the source or delivery evidence'] if reject else [],'restatement':'The fixture built two daily rows from three retained orders; review the local SQLite file and rebuild instructions.'})
+else:text='# Daily sales\nThe fixture delivered two daily sales rows, totaling 36.00, from three retained orders and one excluded test order. Review the local SQLite file before deploying. Rebuild with sh checks.sh in the audit folder. This is a fixture handover, not a model-quality claim.'
+emit({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':text}})
+emit({'type':'turn.completed','usage':{'input_tokens':11,'cached_input_tokens':2,'output_tokens':3}})

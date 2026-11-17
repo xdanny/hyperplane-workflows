@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""Fixture model responses; SDK transport and the acceptance command are real."""
+import json, os, pathlib, sys, time
+args=sys.argv[1:]
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+prompt=sys.stdin.read()
+workspace=pathlib.Path(args[args.index('--cd')+1])
+task=args[args.index('--sandbox')+1]=='workspace-write'
+assert 'web_search="disabled"' in args
+assert 'sandbox_workspace_write.network_access=true' not in args
+stage='build' if task else 'summary'
+calls=pathlib.Path(os.environ['SDK_FIXTURE_CALLS'])
+prior=calls.read_text().splitlines() if calls.exists() else []
+mode=os.environ.get('SDK_FIXTURE_MODE','ordinary')
+thread='fixture-task' if task else 'fixture-summary'
+if task:
+    assert workspace.name=='build'
+    if mode.startswith('general'):
+        assert 'No extra acceptance check is configured' in prompt
+        assert 'caller will run this fixed acceptance command' not in prompt
+    else:
+        assert 'caller will run this fixed acceptance command' in prompt or 'independent checks rejected' in prompt
+    if prior: assert args[args.index('resume')+1]==thread
+else:
+    assert args[args.index('--sandbox')+1]=='read-only'
+    assert (workspace/'build/answer.txt').read_text()=='42'
+    assert (workspace/'build.md').is_file() and (workspace/'approval.md').is_file()
+with calls.open('a') as file:file.write(stage+'\n')
+print(json.dumps({'type':'thread.started','thread_id':thread}),flush=True)
+if task:
+    if mode=='hang':time.sleep(300)
+    target=workspace/'answer.txt'
+    if mode=='symlink':target.symlink_to(os.environ['SDK_FIXTURE_EXTERNAL'])
+    elif mode != 'general-empty':target.write_text('0' if mode=='reject' or (mode=='correction' and not prior) else '42')
+    if mode.startswith('large'):
+        with (workspace/'data.csv').open('wb') as data:
+            data.write(b'id,amount\n')
+            block=(b'123456,'+b'0'*56+b'\n')*1000
+            for _ in range(1000):data.write(block)
+text='Created the answer file' if task else '# Summary\nThe checked answer is 42.'
+print(json.dumps({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':text}}))
+print(json.dumps({'type':'turn.completed','usage':{'input_tokens':11,'cached_input_tokens':2,'output_tokens':3}}))

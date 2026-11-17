@@ -1,0 +1,26 @@
+# Persistent application database. Native API + Codex run identically on Linux and macOS.
+#   make setup && make up
+name: hyperplane
+
+services:
+  db:
+    image: postgres:16-alpine
+    # Survive host reboots: the host deploy assumes Docker brings the db back,
+    # and without a policy the API came up against a dead database (2026-07-05).
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hyperplane
+      POSTGRES_PASSWORD: hyperplane
+      POSTGRES_DB: hyperplane
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - hyperplane_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hyperplane -d hyperplane"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  hyperplane_pgdata:

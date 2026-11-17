@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "reasons", "citations", "revisedWording"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["approve", "reject", "revise", "pass", "fail", "mixed"],
+      "description": "For a SKILL target: approve | reject | revise (the charter's own three). For a RUN target: pass | fail | mixed. Advisory in every case — it gates nothing."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One or two sentences in the persona's own voice, leading with the verdict and the single fact that decided it."
+    },
+    "reasons": {
+      "type": "array",
+      "description": "The findings, each self-contained and specific. What is wrong, or what carried the approval.",
+      "items": { "type": "string" }
+    },
+    "citations": {
+      "type": "array",
+      "description": "The verbatim quotes the reasons rest on. A verdict that cites nothing is not evidence.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref", "quote"],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "Where the quote came from, copied from the evidence headings — a section name, a node id, a numbered evidence quote."
+          },
+          "quote": {
+            "type": "string",
+            "description": "VERBATIM excerpt from the material. No paraphrase, no invention — a reader will check it against the source."
+          }
+        }
+      }
+    },
+    "revisedWording": {
+      "type": "string",
+      "description": "On a 'revise' verdict, the exact replacement text in full, so a human can apply it without re-deriving it. Empty otherwise."
+    }
+  }
+}

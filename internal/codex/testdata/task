@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""Only model output is replaced; the SDK and acceptance command are real."""
+import json, os, pathlib, sys, time
+args=sys.argv[1:]
+assert args[0]=='exec' and '--ignore-user-config' in args and '--ignore-rules' in args
+assert args[args.index('--sandbox')+1]=='workspace-write'
+assert 'sandbox_workspace_write.network_access=false' in args
+workspace=pathlib.Path(args[args.index('--cd')+1])
+prompt=sys.stdin.read()
+resumed='resume' in args
+if resumed:
+    assert args[args.index('resume')+1]=='fixture-task-thread'
+    assert 'independent checks rejected' in prompt
+calls=os.environ.get('SDK_FIXTURE_CALLS')
+if calls:
+    with open(calls,'a') as f: f.write('resume\n' if resumed else 'start\n')
+print(json.dumps({'type':'thread.started','thread_id':'fixture-task-thread'}),flush=True)
+mode=os.environ.get('SDK_FIXTURE_MODE','recovery')
+if mode=='hang': time.sleep(300)
+if mode=='transport': sys.exit(7)
+(workspace/'answer.txt').write_text('42\n' if resumed or mode=='ordinary' else 'wrong\n')
+print(json.dumps({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':'Updated answer.txt'}}))
+print(json.dumps({'type':'turn.completed','usage':{'input_tokens':17,'cached_input_tokens':3,'output_tokens':2}}))

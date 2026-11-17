@@ -1,0 +1,12 @@
+[
+  {
+    "title": "Create a Celsius-to-Fahrenheit utility",
+    "detail": "Write temperature.cjs exporting a pure celsiusToFahrenheit(number) function. It must work offline without dependencies. Preserve unrelated files.",
+    "check": ["node", "-e", "const assert=require('node:assert/strict');const {celsiusToFahrenheit:f}=require('./temperature.cjs');assert.equal(f(0),32);assert.equal(f(100),212);assert.equal(f(-40),-40)"]
+  },
+  {
+    "title": "Document the temperature utility",
+    "detail": "Write README.md describing celsiusToFahrenheit and showing a short usage example. State that it is dependency-free and works offline.",
+    "check": ["node", "-e", "const assert=require('node:assert/strict');const text=require('node:fs').readFileSync('README.md','utf8');assert.match(text,/celsiusToFahrenheit/);assert.match(text,/offline/i);assert.ok(text.length>=100)"]
+  }
+]

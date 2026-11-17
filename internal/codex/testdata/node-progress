@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""Fixture model responses for observing mid-run progress.
+
+Each task step holds the turn open briefly so a reader polling the run can see
+the step actually running, rather than only its start and end. The SDK
+transport, the host's checkpoint protocol and the run row are all real.
+"""
+import json, os, pathlib, sys, time
+args = sys.argv[1:]
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+sys.stdin.read()
+workspace = pathlib.Path(args[args.index('--cd') + 1])
+calls = pathlib.Path(os.environ['SDK_FIXTURE_CALLS'])
+with calls.open('a') as file:
+    file.write(workspace.name + '\n')
+print(json.dumps({'type': 'thread.started', 'thread_id': 'fixture-' + workspace.name}), flush=True)
+time.sleep(float(os.environ.get('SDK_FIXTURE_TURN_SECONDS', '0.6')))
+if '--output-schema' in args:
+    passed = os.environ.get('SDK_FIXTURE_REVIEW', 'pass') == 'pass'
+    text = json.dumps({'passed': passed, 'findings': [] if passed else ['The brief omits the source dates.'],
+                       'restatement': 'Reviewed the earlier documents against the stated criteria.'})
+elif args[args.index('--sandbox') + 1] == 'workspace-write':
+    (workspace / 'out.txt').write_text('42')
+    text = 'Wrote out.txt'
+else:
+    text = '# Step\nDone.'
+print(json.dumps({'type': 'item.completed', 'item': {'id': 'answer', 'type': 'agent_message', 'text': text}}))
+print(json.dumps({'type': 'turn.completed', 'usage': {'input_tokens': 11, 'cached_input_tokens': 2, 'output_tokens': 3}}))

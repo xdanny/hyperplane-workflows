@@ -1,0 +1,58 @@
+.sdk-start { max-width: 860px; margin: 0 auto; padding: var(--s6) var(--s4); }
+.sdk-start-header { display: flex; justify-content: space-between; align-items: start; gap: var(--s4); margin-bottom: var(--s5); }
+.sdk-start h1 { margin: 0; font-size: var(--t-h1); }
+.sdk-start-header p { color: var(--ink-2); margin: var(--s2) 0 0; }
+.sdk-start-choices { display: flex; flex-wrap: wrap; gap: var(--s2); margin-bottom: var(--s4); }
+.sdk-start-form { --action-clearance: 10rem; padding: var(--s6); }
+.sdk-start-form :is(input, textarea, select, button, [tabindex], article) { scroll-margin-block: var(--s4) var(--action-clearance); }
+.sdk-start-form fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.sdk-start-form label { display: block; font-weight: 500; margin-bottom: var(--s2); }
+.sdk-start-form textarea { resize: vertical; line-height: 1.5; }
+.sdk-goal { margin-bottom: var(--s5); font-size: var(--t-h2); }
+.sdk-field-hint, .sdk-acceptance p { font-size: var(--t-sm); color: var(--ink-2); max-width: 72ch; }
+.sdk-field-hint { margin: var(--s2) 0 var(--s5); }
+.sdk-acceptance { background: var(--paper-3); border-radius: var(--r-md); padding: var(--s5); margin: var(--s5) 0; }
+.sdk-acceptance h2 { font-size: var(--t-h2); margin: 0; }
+.sdk-command-fields { display: grid; grid-template-columns: 1fr 2fr; gap: var(--s4); margin-top: var(--s4); }
+.sdk-start-options { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: var(--s4); }
+.sdk-start-form .sdk-correction { display: flex; gap: var(--s2); align-items: center; font-size: var(--t-sm); font-weight: 400; }
+.sdk-start-footer { position: sticky; bottom: 0; z-index: 2; border-top: 1px solid var(--line); margin-top: var(--s5); padding: var(--s3) 0 calc(var(--s3) + env(safe-area-inset-bottom, 0px)); background: var(--paper-2); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--s3); }
+.sdk-action-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); font-size: var(--t-sm); min-width: 0; overflow-wrap: anywhere; }
+.sdk-action-status:empty { display: none; }
+.sdk-action-status .btn { text-align: left; line-height: 1.3; }
+.sdk-action-buttons { display: flex; flex-wrap: wrap; gap: var(--s3); margin-left: auto; }
+.sdk-action-buttons .btn { justify-content: center; min-height: 44px; }
+.sdk-start-error { color: var(--st-fail); overflow-wrap: anywhere; }
+.sdk-library { margin-bottom: var(--s6); }
+.sdk-library-header { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); }
+.sdk-library-header h2 { font-size: var(--t-h2); margin: 0; }
+.sdk-workflow-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: var(--s3); padding: 0; list-style: none; }
+.sdk-workflow-choice { width: 100%; text-align: left; border: 1px solid var(--line); background: var(--paper-2); padding: var(--s4); border-radius: var(--r-md); display: flex; flex-direction: column; gap: var(--s2); }
+.sdk-workflow-choice[aria-pressed="true"] { border-color: var(--ink); }
+.sdk-workflow-choice span, .sdk-workflow-choice small { color: var(--ink-2); overflow-wrap: anywhere; }
+.sdk-workflow-choice span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sdk-save { border-top: 1px solid var(--line); padding-top: var(--s5); margin-top: var(--s5); }
+.sdk-save .input { max-width: 460px; }
+.sdk-save [role="alert"] { color: var(--st-fail); }
+.sdk-remove { margin-top: var(--s3); }
+@media (max-width: 640px) {
+  .sdk-start { padding: var(--s4) var(--s2); }
+  .sdk-start-form { padding: var(--s4); }
+  .sdk-command-fields { grid-template-columns: 1fr; }
+  .sdk-action-status { flex-basis: 100%; }
+  .sdk-action-buttons { width: 100%; }
+  .sdk-action-buttons .btn { flex: 1; }
+  .sdk-start-header { flex-wrap: wrap; }
+}
+
+@media (max-height: 480px) {
+  .sdk-start-form { --action-clearance: var(--s4); }
+  .sdk-start-footer { position: static; }
+}
+
+/* ── Sign-off policy (M-11) ─────────────────────────────────────────────── */
+.workflow-signoff { margin: var(--s5) 0; }
+.workflow-signoff h2 { font-size: var(--t-h2); margin: 0 0 var(--s2); }
+.workflow-signoff label { display: block; font-weight: 600; margin-bottom: var(--s1); }
+.workflow-signoff .input { max-width: 42rem; }
+.workflow-signoff .sdk-field-hint { max-width: 80ch; }

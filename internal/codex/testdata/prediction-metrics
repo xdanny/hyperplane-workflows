@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Fixture model through actual SDK transport. Generated program execution here
+is fixture execution, not proof of the real Codex OS sandbox or ML quality."""
+import json, os, pathlib, subprocess, sys
+args=sys.argv[1:]; prompt=sys.stdin.read()
+assert '--ignore-user-config' in args and '--ignore-rules' in args
+assert 'web_search="disabled"' in args
+workspace=pathlib.Path(args[args.index('--cd')+1])
+writable=args[args.index('--sandbox')+1]=='workspace-write'
+stage=workspace.name if writable else ('review' if '--output-schema' in args else 'card')
+calls=pathlib.Path(os.environ['SDK_FIXTURE_CALLS'])
+previous=calls.read_text().splitlines() if calls.exists() else []
+with calls.open('a') as f: f.write(stage+'\n')
+mode=os.environ.get('SDK_FIXTURE_MODE','pass')
+def emit(value): print(json.dumps(value),flush=True)
+emit({'type':'thread.started','thread_id':f'ml-{stage}-{len(previous)}'})
+if stage=='plan':
+ (workspace/'plan.md').write_text('# Synthetic baseline plan\nFixture input only; no actual training or custody proof. Approve before execution.\n')
+ text='Prepared the synthetic baseline plan for review.'
+elif stage=='baseline':
+ assert (workspace.parent/'approve-plan.md').exists(), 'training ran before approval'
+ report={'primaryMetric':{'name':'AUROC','value':0.75,'threshold':0.72,'comparator':'>=','pass':True},'evalset':{'sha256':'ab'*32,'rows':4},'leakageChecks':[{'id':'seeded-leaky-feature','pass':True,'expectedTrip':True,'tripped':True,'evidence':'Synthetic fixture: copied-data post-label feature was detected.'}]}
+ if mode=='wrong-value': report['primaryMetric']['value']=0.78
+ if mode=='wrong-holdout': report['evalset']['sha256']='cd'*32
+ if mode=='missed-control': report['leakageChecks'][0]['tripped']=False
+ predictions='y_true,y_score\n1,0.9\n0,0.8\n1,0.4\n0,0.1\n'
+ code='from pathlib import Path\nPath("predictions.csv").write_text('+repr(predictions)+')\nPath("eval-report.json").write_text('+repr(json.dumps(report))+')\n'
+ (workspace/'checks.sh').write_text("set -eu\npython3 - <<'PY_FIXTURE'\n"+code+'PY_FIXTURE\n')
+ command="/bin/sh -lc 'sh checks.sh'"
+ if mode!='no-execution': emit({'type':'item.started','item':{'id':'measure','type':'command_execution','command':command,'status':'in_progress','exit_code':None}})
+ result=subprocess.run(['sh','checks.sh'],cwd=workspace,capture_output=True,text=True)
+ if mode!='no-execution': emit({'type':'item.completed','item':{'id':'measure','type':'command_execution','command':command,'status':'completed','exit_code':result.returncode,'aggregated_output':result.stdout+result.stderr}})
+ text='Produced synthetic predictions and evaluation evidence; this fixture does not establish real training.'
+elif stage=='review':
+ passed=not(mode=='review-reject' and 'baseline' in previous)
+ text=json.dumps({'passed':passed,'findings':[] if passed else ['Synthetic reviewer rejected unsupported methodology.'],'restatement':'Synthetic fixture exercised the review and approval flow; custody and training quality remain unproven.'})
+else: text='# Model card\nSynthetic fixture scored submitted rows only. AUROC 0.75 exceeds 0.72. Training quality, label provenance and holdout custody are not established.'
+emit({'type':'item.completed','item':{'id':'answer','type':'agent_message','text':text}})
+emit({'type':'turn.completed','usage':{'input_tokens':11,'cached_input_tokens':2,'output_tokens':3}})

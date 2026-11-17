@@ -1,0 +1,62 @@
+:root {
+  --bg: #0a0b0f;
+  --panel: #14161d;
+  --ink: #e8eaf0;
+  --muted: #8b90a0;
+  --accent: #6ee7b7;
+  --line: #232634;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 600px at 70% -10%, #1b2030 0%, transparent 60%),
+    var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+.shell {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 18vh 24px 0;
+}
+
+.hero .mark {
+  font-size: 40px;
+  color: var(--accent);
+  letter-spacing: -2px;
+}
+
+.hero h1 {
+  font-size: 44px;
+  margin: 8px 0 4px;
+  letter-spacing: -1px;
+}
+
+.tagline { color: var(--muted); margin: 0 0 28px; }
+
+.status {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+
+.status .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--muted);
+}
+.status--online .dot { background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+.status--unreachable .dot, .status--degraded .dot { background: #f87171; }
+
+.status-label { font-weight: 600; }
+.status-sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+.foot { color: var(--muted); font-size: 12px; margin-top: 18px; }

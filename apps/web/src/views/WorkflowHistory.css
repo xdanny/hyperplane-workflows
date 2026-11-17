@@ -1,0 +1,69 @@
+/* Workflow history (F-C). Tables are the right shape for "how did these runs
+   differ?", so the only work here is making them readable and keeping wide
+   content scrolling inside its own box rather than the page. */
+
+.wfh-section { margin-bottom: var(--s5); padding: var(--s4) var(--s5); }
+.wfh-section .section-head { display: flex; align-items: baseline; justify-content: space-between; }
+.wfh-description { font-size: var(--t-md); margin: 0 0 var(--s3); }
+
+.wfh-inputs { margin: 0; display: grid; gap: var(--s3); }
+.wfh-input dt { font-weight: 600; }
+.wfh-input dd { margin: 0; color: var(--ink-2); }
+.wfh-required {
+  font: 500 var(--t-xs)/1 var(--font-mono);
+  text-transform: uppercase; letter-spacing: .08em;
+  color: var(--st-block); margin-left: var(--s2);
+}
+
+.wfh-steps { margin: 0 0 var(--s3); padding-left: var(--s5); display: grid; gap: 4px; }
+
+/* Wide tables scroll inside themselves; the page never scrolls sideways. */
+.wfh-table-wrap { overflow-x: auto; }
+.wfh-table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+.wfh-table th, .wfh-table td {
+  text-align: left; padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line); vertical-align: top;
+}
+.wfh-table thead th {
+  font: 500 var(--t-xs)/1.4 var(--font-mono);
+  text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3);
+  white-space: nowrap;
+}
+.wfh-runs td { white-space: nowrap; }
+.wfh-runs .wfh-inputs-cell { white-space: normal; max-width: 22ch; }
+.wfh-row--selected { background: var(--paper-2); }
+.wfh-failing { white-space: normal; color: var(--st-fail); font-size: var(--t-xs); max-width: 34ch; }
+
+.wfh-compare { margin-bottom: var(--s5); padding: var(--s4) var(--s5); }
+.wfh-compare tbody th { width: 12rem; color: var(--ink-3); font-weight: 500; }
+
+.wfh-diff-summary { font-weight: 600; }
+.wfh-diff {
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 30rem; overflow: auto;
+  padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--paper-2); font: var(--t-sm)/1.6 var(--font-mono);
+}
+/* Colour is not the only signal: a strike-through and an underline survive a
+   monochrome screen and a reader who cannot separate the two hues. */
+.wfh-diff-remove { text-decoration: line-through; color: var(--st-fail); background: color-mix(in srgb, var(--st-fail) 12%, transparent); }
+.wfh-diff-add { text-decoration: underline; color: var(--st-pass); background: color-mix(in srgb, var(--st-pass) 12%, transparent); }
+
+.wfh-decided { margin-top: var(--s4); }
+
+@media (max-width: 700px) {
+  .wfh-compare tbody th { width: auto; }
+}
+
+/* ── Attaching earlier runs (P-16) ──────────────────────────────────────── */
+.wfh-attach-list { list-style: none; padding: 0; margin: var(--s3) 0; display: grid; gap: var(--s2); }
+.wfh-attach-list label { display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap; }
+.wfh-attach-skipped { margin: var(--s2) 0 0; color: var(--ink-2); font-size: var(--t-sm); }
+
+/* ── Output files compared by checksum (M-18) ───────────────────────────── */
+.wfh-files tbody th { width: auto; font-weight: 500; word-break: break-all; }
+/* Changed is the row a reader is looking for, so it carries the emphasis; the
+   verdict is also spelled out in its own column, never colour alone. */
+.wfh-file--changed td:last-child { color: var(--st-fail); font-weight: 600; }
+.wfh-file--same td:last-child { color: var(--ink-2); }
+.wfh-file--unknown td:last-child { color: var(--ink-2); font-style: italic; }

@@ -1,0 +1,1 @@
+ALTER TABLE tickets ADD COLUMN review_verdict TEXT NOT NULL DEFAULT '';

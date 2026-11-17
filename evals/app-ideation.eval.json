@@ -1,0 +1,20 @@
+{
+  "id": "app-ideation",
+  "name": "App Ideation Quality",
+  "description": "Evaluates app concept generation quality",
+  "skill_ref": "app-ideation",
+  "cases": [
+    {
+      "id": "case-1",
+      "input": {"domain": "fitness", "target_user": "busy professionals"},
+      "criteria": "The generated app concept must include a clear value proposition, target user definition, and at least 3 core features.",
+      "checks": [{"kind": "text-nonempty"}]
+    },
+    {
+      "id": "case-2",
+      "input": {"domain": "education", "target_user": "K-12 students"},
+      "criteria": "The app concept must address a specific learning challenge and propose a novel interaction pattern.",
+      "checks": [{"kind": "text-nonempty"}]
+    }
+  ]
+}

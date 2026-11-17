@@ -1,0 +1,25 @@
+#!/usr/bin/env node
+// Fixture model only: the SDK launches this executable and owns continuation.
+import('node:fs').then(async (fs) => {
+  const assert = (await import('node:assert/strict')).default;
+  const args = process.argv.slice(2);
+  assert.equal(args[0], 'exec');
+  assert.ok(args.includes('--ignore-user-config'));
+  assert.ok(args.includes('--ignore-rules'));
+  assert.equal(args[args.indexOf('--sandbox') + 1], 'read-only');
+  assert.ok(args.includes('sandbox_workspace_write.network_access=false'));
+  let prompt = '';
+  for await (const data of process.stdin) prompt += data;
+  if (args.includes('resume')) assert.equal(args[args.indexOf('resume') + 1], 'fixture-console-thread');
+  if (process.env.SDK_FIXTURE_CALLS) fs.appendFileSync(process.env.SDK_FIXTURE_CALLS,
+    JSON.stringify({ resumed: args.includes('resume'), prompt }) + '\n');
+  const emit = (event) => process.stdout.write(JSON.stringify(event) + '\n');
+  emit({ type: 'thread.started', thread_id: 'fixture-console-thread' });
+  if (prompt === 'hang') {
+    emit({ type: 'item.started', item: { type: 'command_execution', id: 'inspect', command: 'fixture' } });
+    await new Promise((resolve) => setTimeout(resolve, 300_000));
+  }
+  if (prompt === 'fail') emit({ type: 'turn.failed', error: { message: 'fixture transport failed' } });
+  else emit({ type: 'item.completed', item: { type: 'agent_message', id: 'reply', text: `reply: ${prompt}` } });
+  emit({ type: 'turn.completed', usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 2 } });
+});
