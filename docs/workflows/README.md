@@ -15,7 +15,11 @@ The same editor supports dragging, clicking to add, one description per line and
 a reviewed suggestion from a goal. Described steps default to documents. Choose
 research, independent review, approval or file-producing work where those behaviors
 are needed. General work needs no acceptance command or domain-specific check;
-extra checks can be selected explicitly. All currently supported sequences run in order; branching is not implemented.
+extra checks can be selected explicitly. Steps run in order by default. Explicit
+dependencies, edited through **Start after**, allow branches: up to two ready
+document, research or check steps can run together. Tasks and approvals run
+exclusively. See the [SDK workflow runtime](../runtime.md#sdk-workflows-built-from-nodes)
+for dependency and evidence rules.
 
 | Starting template | Purpose | Current execution |
 |---|---|---|

@@ -25,4 +25,4 @@ The corresponding APIs are `GET /api/personas`, `POST /api/personas/{id}/review`
 
 Reviews are advisory records. They neither grant permissions nor approve skills or workflow steps. For a separately authorized browser review, use a charter as criteria and report only interactions actually observed.
 
-Keep current instructions in these files. Store review results through the review API or with the evidence for the task, rather than appending audit histories to the charters. The pre-cleanup originals are archived outside the checkout in `../hyperplane-cleanup-archive-20260906/persona-charters-20260907/`, with verified file hashes in its manifest.
+Keep current instructions in these files. Store review results through the review API or with the evidence for the task, rather than appending audit histories to the charters.

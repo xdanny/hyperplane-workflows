@@ -1,66 +1,130 @@
 # Hyperplane
 
-Hyperplane is a local application for giving coding agents work you can inspect. Start with a project brief, split it into tickets, and run the next ready ticket against a workspace. The Board saves the result for a person to review before dependent tickets can start. The same application has a workflow editor for repeatable jobs with inputs, files and acceptance checks.
+Hyperplane runs coding agents against tickets in a local project. On the Board,
+a worker takes one ticket and returns its changes for review. You decide when
+dependent work can start. For repeatable jobs, the workflow editor lets you
+specify inputs, acceptance checks and approval steps.
 
-## From a ticket to a decision
+Go API · React UI · PostgreSQL · Codex SDK
 
-Suppose a project needs a CSV reader and a report that uses it. On the Board, make the report depend on the reader. When you start work, the Go backend selects a ready ticket, claims it in PostgreSQL and starts a worker through the Codex SDK. The worker receives the ticket title and implementation details. A successful run puts the ticket in review. A failed run leaves it blocked. Accepting the reader makes the report eligible for a later run.
+[Start locally](#start-locally) · [Run the checked example](#four-rows-one-checkable-result) · [Read the architecture](DESIGN.md)
 
-The split is deliberate. The SDK manages the model conversation and tools. Hyperplane owns which ticket was assigned, which workspace it can change and which human decision allows the next task to proceed. The React client reads this state from the API. [Ticket selection](internal/store/sdk_ticket.go) · [Worker handoff](internal/sdkruntime/ticket.go)
+<picture>
+  <source media="(prefers-reduced-motion: reduce)" srcset="docs/media/board-flow.png">
+  <img src="docs/media/board-flow.gif" alt="A worker takes the Parse expenses ticket. When it finishes, an engineer reviews the changes. Accepting them makes Render report eligible for a later run.">
+</picture>
 
-## What a check can establish
+In this example, the worker finishes **Parse expenses** and the ticket moves to review.
+An engineer accepts it, then makes a separate request to start **Render report**.
+[Static diagram](docs/media/board-flow.png) · [Animation source](docs/media/render-board.py)
 
-The [checked-file example](examples/sdk-checked-work/README.md) starts with four synthetic expense rows. An agent writes a totals file in its writable directory. A separate Node program compares the input with the original and checks that the file contains exactly two totals, food 15.00 and travel 6.00. If the check fails, this workflow allows one correction. You can read the entire [acceptance test](examples/sdk-checked-work/acceptance.mjs) before running it.
+## How a ticket reaches review
 
-That example uses a trusted host program outside the writable output directory. For a direct project task, the caller can likewise supply a check and enable one correction. Board tickets follow a different path: the runner disables automatic repair and hands successful work to a person for review.
+Suppose **Render report** depends on **Parse expenses**. Selecting **Run next task**
+claims one eligible ticket in the lane. In one transaction, PostgreSQL saves the ticket claim,
+run and initial checkpoint before a worker starts. The Codex SDK receives that
+ticket's title, implementation detail and selected workspace.
+
+| What happens | Saved Board state | What can happen next |
+|---|---|---|
+| Worker finishes successfully | Run `passed`; ticket `review` | A person inspects the result |
+| Worker fails or is interrupted | Ticket `blocked` | A person decides how to proceed |
+| Person accepts the result | Ticket `done` | Its dependents can become ready |
+| Another work request arrives | One ready ticket is claimed | That ticket runs |
+
+Use **Open run** to inspect the result, then mark the ticket **Done** to accept it.
+On the Board, the engineer checks the work. The worker has no independent
+acceptance check or automatic repair. A later **Run next task** request can
+claim a newly eligible ticket.
+
+The SDK owns the model conversation and tools. Hyperplane owns admission,
+workspace selection, persistence and the decision that releases a dependency.
+[Admission transaction](internal/store/sdk_ticket.go) · [Worker handoff](internal/sdkruntime/ticket.go) · [Behavior tests](internal/httpapi/sdk_board_test.go)
+
+## Choose the boundary your work needs
+
+| Entry point | Work you give it | Completion boundary |
+|---|---|---|
+| **Board** | Saved tickets with dependencies in a project workspace | Successful runs wait for human review |
+| **Workflow** | Reusable steps, inputs and declared dependencies | Configured checks and approval steps govern progress |
+| **Project task** | One change in an existing folder | Optional trusted host check; optional single correction |
+
+In **Workflows → Build with steps**, add steps visually or describe one per line.
+Choose document, research, model review, human approval or file-producing work.
+Review the definition before saving or running it; saving starts no work.
+
+Steps run in order by default. **Start after** defines explicit dependencies,
+allowing up to two ready document, research or check steps to run together. Tasks
+and approvals run exclusively. Model review and a host-run acceptance program
+are different kinds of evidence. See [workflow execution](docs/runtime.md#sdk-workflows-built-from-nodes).
+
+For repeated jobs, declare inputs and reference them as `{slot:id}` in
+instructions. Supply values in the UI or with
+`bin/hyperplane workflow run <name> --input k=v`. Missing required inputs are
+rejected before launch. [Templates and recurring workflows](docs/workflows/README.md)
 
 ## Start locally
 
-Install Go 1.26, Node 22+, Docker with Compose, and authenticate Codex. Then:
+You need **Go 1.26**, **Node 22+**, **Docker with Compose**, and Codex authentication.
+Run from the repository root:
 
 ```sh
-make setup       # start PostgreSQL, install dependencies, build API and web app
-make up          # serve the app at http://127.0.0.1:4252
+make setup       # start PostgreSQL, install dependencies, build API + web + CLI
+make up          # start the local server
 ```
 
-Linux and macOS run the API and Codex natively; Docker runs PostgreSQL. Ctrl-C
-stops the API. `make down` stops the database without removing its volume.
-`make seed` installs optional templates and catalogs. See [runtime setup](docs/runtime.md#setup-and-configuration).
+Open [the local web app](http://127.0.0.1:4252) in your browser.
+The API and Codex run natively on Linux or macOS; Docker runs PostgreSQL.
+If this machine has no Codex login, after setup run:
 
-## Create a workflow
+```sh
+node packages/agents/node_modules/@openai/codex/bin/codex.js login
+```
 
-1. Open **Workflows → Build with nodes**. Add steps by dragging, clicking, or
-   entering one description per line. **Suggest steps from goal** proposes an
-   editable definition for your review.
-2. Choose what each step does: write a document, research live sources, review
-   previous work, wait for your approval, or perform checked work that creates files.
-3. Review inputs and permissions, then save the definition or run it. Saving
-   never starts work. Open the run to inspect progress, files, checks and decisions.
+Ctrl-C stops the API. `make down` stops PostgreSQL and retains its volume.
+`make seed` refreshes the optional templates and catalogs.
+[Configuration and runtime details](docs/runtime.md#setup-and-configuration)
 
-Declare the facts that change between runs as inputs rather than editing the
-instructions each time: give each one an id, a hint written for whoever fills it
-in, and an example, then reference it as `{slot:id}` in any instruction. Saving
-keeps the tokens, so the definition you reviewed is the one that runs again;
-`bin/hyperplane workflow run <name> --input k=v` supplies the values at launch,
-and a missing required input is refused with that input named. Five shipped
-templates are built this way for weekly and monthly work — see
-[workflows you rerun every period](docs/workflows/README.md#workflows-you-rerun-every-period).
+## Four rows, one checkable result
 
-Templates are optional starting points. They use the same editor and SDK sequence;
-a market-research template does not install a different kind of agent. Some data
-templates currently require built-in file contracts and checks. Their remaining
-special cases are tracked in the [SDK roadmap](docs/sdk-migration.md).
+The bundled example makes the acceptance boundary small enough to read in full.
+A worker reads four synthetic expenses and writes `build/totals.csv`. A fixed
+Node program, run by the host, checks the output and confirms that the input is
+unchanged. A later document step explains the checked result.
 
-Steps run in order. Branching, automatic crash recovery and general external-app
-actions are not implemented. Every shipped template, including ML, uses SDK steps.
-See [workflow guidance](docs/workflows/README.md) for the precise current capabilities.
+```text
+input.csv                         build/totals.csv
+──────────────────                ──────────────────
+category,amount                   category,total
+food,10.20                        food,15.00
+food,4.80                         travel,6.00
+travel,7.25
+travel,-1.25
+```
 
-## Work on an existing project
+After `make sdk-install` and Codex authentication:
 
-Choose **Project task**, describe the change and select an existing folder. You
-can supply a trusted acceptance program; without one, completion does not claim
-independent correctness. The model edits that folder; the host runs any supplied
-check. Optional correction reuses the same conversation after a failed check.
+```sh
+demo_root="$(mktemp -d)"
+node examples/sdk-checked-work/workflow.mjs "$demo_root/expenses"
+```
+
+This makes actual model calls. The example creates a new output folder and allows
+one correction after a normal failing check. The worker can write its `build/`
+folder; the input, reference data and check stay outside that writable folder.
+The run writes the totals, a `build.md` record with hashes, an `explain.md`
+summary and a `receipt.json` result.
+
+The check establishes **these two exact totals and unchanged input**. It does
+not establish general CSV-parser or data-pipeline correctness. Read the
+[workflow](examples/sdk-checked-work/workflow.mjs),
+[acceptance program](examples/sdk-checked-work/acceptance.mjs) and
+[example instructions](examples/sdk-checked-work/README.md).
+
+## Bring your own project and check
+
+Choose **Project task**, describe a change and select an existing folder, or use
+the CLI. Supply a trusted acceptance program when you need a host-run check:
 
 ```sh
 bin/hyperplane task --target /absolute/project \
@@ -68,38 +132,40 @@ bin/hyperplane task --target /absolute/project \
   --auto-repair --json "Fix keyboard activation"
 ```
 
-Acceptance commands run with host privileges. Keep their programs and dependencies
-outside the editable folder when the worker must not change them. See
-[project-task rules](docs/runtime.md#direct-sdk-project-tasks).
+`--auto-repair` permits one correction in the same conversation after a normal
+failing check. Without `--check`, the result records that independent verification
+was not requested. Acceptance commands run with **host privileges**: keep their
+programs and dependencies outside the editable folder when the worker must not
+change them. Targets must be separate from Hyperplane's code and run records.
+[Project-task rules](docs/runtime.md#direct-sdk-project-tasks) · [Check execution](packages/agents/src/workflows/task.mjs)
 
-The [SDK package](packages/agents/README.md) also works directly with an ordinary
-Codex SDK thread and application-owned verification and persistence callbacks.
-The [checked-file example](examples/sdk-checked-work/README.md) and
-[backlog example](examples/sdk-backlog/README.md) show the existing integrations.
+The [SDK package](packages/agents/README.md) can also be used directly, with an
+ordinary Codex SDK thread and application-owned verification and persistence.
 
-## Verify changes
+## Verify and inspect
 
 ```sh
-make sdk-install
-make test-unit              # no database connections
+make sdk-install sdk-test   # SDK adapter tests
+make test-unit              # Go tests without database connections
 make test-db                # separate disposable PostgreSQL at port 15497
 make gate                   # SDK tests, formatting, vet, build, Go tests, UI lint
-make web-build web-unit     # frontend build and unit tests
+make web-build web-unit     # frontend build + unit tests
 ```
 
-Test processes use `TEST_DATABASE_URL`, create separate databases and remove only
-those databases afterward. They do not use the application database.
-The [verification guide](docs/evidence/README.md) lists the fixture tests and a live-model example. The [runtime guide](docs/runtime.md#verification) includes Linux checks.
+Database tests use `TEST_DATABASE_URL`, create separate databases and remove
+only those databases afterward. They do not use the application database.
+Deterministic tests include fixture model responses; the checked-file example
+above exercises the configured model. [Verification guide](docs/evidence/README.md)
 
-## Navigate the source
-
-| Area | Responsibility |
+| Source | Responsibility |
 |---|---|
-| `packages/agents` | Shared SDK execution, optional verification and tools |
-| `internal/sdkruntime`, `internal/codex` | Backend SDK run lifecycle and worker transport |
-| `internal/sdkworkflow`, `internal/sdkplanning` | Definition validation and reviewed proposals |
-| `internal/store` | Saved definitions, approvals, run state and migrations |
-| `apps/api`, `apps/cli`, `apps/web` | User interfaces |
-| `internal/seed` | Editable starting templates |
+| [SDK package](packages/agents) | Model execution, tools, optional verification |
+| [Run lifecycle](internal/sdkruntime) / [worker transport](internal/codex) | Workspace admission and worker ownership |
+| [Workflow definitions](internal/sdkworkflow) / [planning](internal/sdkplanning) | Validation and reviewed proposals |
+| [Store](internal/store) | Ticket claims, approvals, checkpoints and migrations |
+| [Web](apps/web) / [API](apps/api) / [CLI](apps/cli) | Interfaces to the same saved state |
 
-[Architecture](DESIGN.md) · [Operations](docs/runtime.md) · [Remaining work](docs/sdk-migration.md)
+Automatic crash recovery and general external-app actions are not implemented.
+Some data templates still require built-in file contracts and checks. Workspace
+locks coordinate Hyperplane writers; other host processes can still edit files.
+See the [runtime boundaries](docs/runtime.md) and [remaining work](docs/sdk-migration.md).

@@ -80,9 +80,7 @@ Current behavior is documented in [DESIGN.md](../DESIGN.md) and [runtime.md](run
 - The optional pipeline check accepts direct source-to-output builds and multiple
   dependent models without mandatory staging layers. The approved output and
   model definitions remain pinned, with source coverage and measurement checks.
-- Review charters contain current editable criteria. Historical audit ledgers and
-  personal infrastructure notes are archived outside the repository. Startup no
-  longer imports a personal decision log over saved decisions.
+- Review charters contain current editable criteria. Startup preserves saved decisions.
 - Skill extraction and review read source-run SDK checkpoints without descendant
   graph evidence. Learning considers the accepted current attempt, and draft
   quotations must occur in its displayed checkpoint. Explicit knowledge export
